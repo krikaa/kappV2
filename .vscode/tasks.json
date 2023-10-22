@@ -1,0 +1,42 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Build",
+            "type": "shell",
+            "command": "C:/Users/S11M/.platformio/penv/Scripts/platformio.exe",
+            "args": [
+                "run"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            }
+        },
+        {
+            "label": "Upload",
+            "type": "shell",
+            "command": "C:/Users/S11M/.platformio/penv/Scripts/platformio.exe",
+            "args": [
+                "run",
+                "--target",
+                "upload"
+            ],
+            "problemMatcher": [],
+            "dependsOn": "Build"
+        },
+        {
+            "label": "Monitor",
+            "type": "shell",
+            "command": "C:/Users/S11M/.platformio/penv/Scripts/platformio.exe",
+            "args": [
+                "run",
+                "--target",
+                "upload",
+                "--target",
+                "monitor"
+            ],
+            "problemMatcher": []
+        }
+    ]
+  }
