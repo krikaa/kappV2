@@ -18,8 +18,9 @@ boolean NfcAdapter::begin(boolean verbose)
 
     if (! versiondata)
     {
-        Serial.print(F("Didn't find PN53x board"));
-        while(1);
+        if (verbose) Serial.println(F("Didn't find PN53x board"));
+        return false;
+        // while(1);
     }
 
     if (verbose)
@@ -39,7 +40,7 @@ boolean NfcAdapter::connected(boolean verbose)
 
     if (! versiondata)
     {
-        Serial.println(F("Board not connected"));
+        if (verbose) Serial.println(F("Board not connected"));
         return false;
     }
     if (verbose) Serial.println(F("Board connected"));
