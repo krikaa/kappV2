@@ -9,7 +9,7 @@
 #define DOOR_OPEN_MS 	2500
 #define DOOR_LED_PIN 	2
 
-scannedTag_t tag = {"", NO_SCAN};
+String UUID;
 
 String tagID = "";
 uint32_t door_last_poll = 0;
@@ -57,30 +57,26 @@ void setup()
 	pinMode(0, OUTPUT);
 	pinMode(16, OUTPUT);
 	Serial.begin(115200);
-	// ConnectWifi();
-	// ConnectFirebase();
-	nfcBegin();
-	Blink();
+
+	ConnectWifi();
+	ConnectFirebase();
+	ConfigTime();
+
+	NfcBegin();
+	Blink(); // For showing when setup is done
 }
 
 void loop()
 {
-	if(nfcTask(&tag)) { // Returns scanned tagID, "" if not present
+	if(NfcTask(&UUID)) { // Returns scanned tagID, "" if not present
 		door_last_poll = millis();
 		digitalWrite(DOOR_LED_PIN, HIGH); // OPEN
 	}
 
-	// if(tag.scanType == LONG_SCAN){
-	// 	Serial.println("LONG");
-	// }
-	// else if(tag.scanType == SHORT_SCAN){
-	// 	Serial.println("SHORT");
-	// }
 	DoorStateChange();
 
-	// FireBaseTask(&tag);
+	FireBaseTask(&UUID);
 	
-	tag.scanType = NO_SCAN;
 }
 
 
