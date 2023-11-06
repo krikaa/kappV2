@@ -386,6 +386,7 @@ bool PN532::readPassiveTargetID(uint8_t cardbaudrate, uint8_t *uid, uint8_t *uid
     pn532_packetbuffer[2] = cardbaudrate;
 
     if (HAL(writeCommand)(pn532_packetbuffer, 3)) {
+        // Serial.println("Write failed");
         return 0x0;  // command failed
     }
 
@@ -407,8 +408,9 @@ bool PN532::readPassiveTargetID(uint8_t cardbaudrate, uint8_t *uid, uint8_t *uid
       b6..NFCIDLen    NFCID
     */
 
-    if (pn532_packetbuffer[0] != 1)
+    if (pn532_packetbuffer[0] != 1){
         return 0;
+    }
 
     uint16_t sens_res = pn532_packetbuffer[2];
     sens_res <<= 8;

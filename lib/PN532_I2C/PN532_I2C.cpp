@@ -110,7 +110,6 @@ int16_t PN532_I2C::getResponseLength(uint8_t buf[], uint8_t len, uint16_t timeou
       write(PN532_NACK[i]);
     }
     _wire->endTransmission();
-
     return length;
 }
 
