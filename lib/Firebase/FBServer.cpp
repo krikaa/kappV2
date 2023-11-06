@@ -63,7 +63,7 @@ void ConnectFirebase(){
 	Firebase.reconnectWiFi(true);
 }
 
-static boolean FireBaseReady(uint32_t sendDataPrev){
+static inline boolean FireBaseReady(uint32_t sendDataPrev){
 	if(Firebase.ready() && signupOK && (millis() - sendDataPrev > 1000 || sendDataPrev == 0)) {
 		return true;
 	}
@@ -75,6 +75,27 @@ static FirebaseJson SetLogEntry(String tagID){
 	fbjson.add("Event", "Opened");
 	fbjson.add("UUID", tagID);
 	return fbjson;
+}
+
+static String FireBaseGetUUID(String tagID){
+	FirebaseJson fbjson;
+	QueryFilter query;
+	if(Firebase.RTDB.getJSON(&fbdo, "cards/"+tagID)){
+		fbjson = fbdo.to<FirebaseJson>();
+		String jsonStr;
+		fbjson.toString(jsonStr);
+		// Serial.println(jsonStr);
+		DynamicJsonDocument doc(1024);
+		DeserializationError error = deserializeJson(doc, jsonStr);
+		if (error) {
+			Serial.print(F("JSON parsing failed: "));
+			Serial.println(error.c_str());
+			return String();
+ 	 	}
+		String type = doc["type"].as<String>();
+		return type;
+	}
+	return String();
 }
 
 static int GetNextEntryNumber(){ // Returns the next entry nr.
@@ -96,63 +117,63 @@ static int GetNextEntryNumber(){ // Returns the next entry nr.
 		
 		Serial.print("Previous entry: ");
 		Serial.println(keyInt);
-		Serial.println(jsonStr.c_str());
+		if(keyInt == 0){
+			keyInt = 1;
+		}
+		// Serial.println(jsonStr.c_str());
 		return keyInt;
 	}
+	Serial.println("Get next entry error");
 	return 0; // Error
-
-	// if(Firebase.RTDB.getJSON(&fbdo,"log", &query)){
-	// 	fbjson = fbdo.to<FirebaseJson>();
-	// 	String jsonStr;
-	// 	fbjson.toString(jsonStr,"\n");
-	// 	// Serial.println(jsonStr.c_str());
-	// 	DynamicJsonDocument jsonDocument(256);
-	// 	DeserializationError error = deserializeJson(jsonDocument, jsonStr);
-	// 	if (error) {
-	// 		Serial.print("Error parsing JSON: ");
-	// 		Serial.println(error.c_str());
-	// 	} else {
-	// 		const ArduinoJson::JsonObject& entry = jsonDocument.as<ArduinoJson::JsonObject>();
-	// 		String nextEntryNumber = "1";
-	// 		for (ArduinoJson::JsonPair kv : entry) {
-	// 			String entryKey = kv.key().c_str();
-	// 			// Extract the entry number from the entry key
-	// 			int entryNumber = entryKey.substring(5).toInt();
-	// 			if (entryNumber >= nextEntryNumber.toInt()) {
-	// 				nextEntryNumber = String(entryNumber + 1);
-	// 			}
-	// 		}
-	// 		return nextEntryNumber;
-	// 		Serial.println(nextEntryNumber); Serial.print(" Is the next entry");
-	// 		Serial.println();
-	// 		// Now you can work with the 'carParkingSlots' JsonObject
-	// 	}
-	// 	// Get Entry number
-	// }
-	// return String();
 }
 
-static int GetLogCount(){
-	if(Firebase.RTDB.getString(&fbdo,("log/count"))){
-		int count = fbdo.intData();
-		return count;
+// static int GetLogCount(){
+// 	if(Firebase.RTDB.getString(&fbdo,("log/count"))){
+// 		int count = fbdo.intData();
+// 		return count;
+// 	}
+// 	return 0;
+// }
+
+// static void IncrementLogCount(int count){
+// 	if(Firebase.RTDB.setInt(&fbdo, "log/count", count)){
+// 		// Serial.println("Incremented");
+// 	}
+// 	else{
+// 		Serial.println("Failed to increment");
+// 	}
+// }
+
+// static void IncrementLogCount(){
+// 	int count = GetLogCount();
+//     IncrementLogCount(count + 1);
+// }
+
+static boolean FireBaseAddLog(String tagID) {
+	FirebaseJson fbjson = SetLogEntry(tagID);
+	int log_count = GetNextEntryNumber();
+	std::string log_str = std::to_string(log_count + 1);
+
+	// Incase the database node was deleted. 
+	// Because the query.limitToLast(1) will return 0
+	// if only 1 log in the node.
+	if (log_count == 0){
+		log_count++; 
 	}
-	return 0;
+	
+	if(Firebase.RTDB.setJSON(&fbdo, "log/" + log_str, &fbjson)){
+		if(Firebase.RTDB.setTimestamp(&fbdo, "log/" + log_str + "/timestamp")){
+			Serial.println("Log added");
+			return true;
+		}
+	}
+	else {
+		Serial.println("Failed");
+	}
+	return false;
 }
 
-static void IncrementLogCount(int count){
-	if(Firebase.RTDB.setInt(&fbdo, "log/count", count)){
-		// Serial.println("Incremented");
-	}
-	else{
-		Serial.println("Failed to increment");
-	}
-}
 
-static void IncrementLogCount(){
-	int count = GetLogCount();
-    IncrementLogCount(count + 1);
-}
 
 void FireBaseTask2(String tagID){
 	if (tagID == "") return;
@@ -160,94 +181,70 @@ void FireBaseTask2(String tagID){
 	if (FireBaseReady(sendDataPrev)){
 		sendDataPrev = millis();
 
-		FirebaseJson fbjson = SetLogEntry(tagID);
-		int log_count = GetNextEntryNumber();
+		FireBaseAddLog(tagID);
 
-		// Incase the database was deleted. 
-		// Because the query.limitToLast(1) will return 0
-		// if only 1 log in the node.
-		if(log_count == 0){
-			log_count++; 
-		}
-		
-		if(Firebase.RTDB.setJSON(&fbdo, "log/" + std::to_string(log_count + 1), &fbjson)){
-			// IncrementLogCount(log_count + 1);
-			Serial.println("Added");
-		}
-		else{
-			Serial.println("Failed");
-		}
-
-
-
-		// if (Firebase.RTDB.setJSON(&fbdo, "log/entry1", &fbjson)){
-		// 	// if (Firebase.RTDB.pushTimestamp(&fbdo, "log")){
-		// 	Serial.println("Success");
-		// 	// }
-		// }
-		// else{
-		// 	Serial.println("Failed");
-		// }
-		// fbjson = SetLogEntry(tagID, count++);
-
-		// if (Firebase.RTDB.setJSON(&fbdo, "log/entry2", &fbjson)){
-		// 	// if (Firebase.RTDB.pushTimestamp(&fbdo, "log")){
-		// 	Serial.println("Success");
-		// 	// }
-		// }
-		// else{
-		// 	Serial.println("Failed");
-		// }
 	}
 }
 
-void FireBaseTask(){
+static FirebaseJson SetStudentJSON(){
+	FirebaseJson fbjson;
+	fbjson.add("owner", "TBD");
+	fbjson.add("type", "student");
+	return fbjson;
+}
+
+static boolean AddStudentRights(String tagID){
+	FirebaseJson fbjson = SetStudentJSON();
+	if(Firebase.RTDB.setJSON(&fbdo, "cards/" + tagID, &fbjson)){
+		if(Firebase.RTDB.setTimestamp(&fbdo, "cards/" + tagID + "/timestamp")){
+			Serial.println("Student added");
+			return true;
+		}
+	}
+	Serial.println("ERROR: Student not added");
+	return false;
+}
+
+static void TeacherTask(scannedTag_t *tag) {
+	if(tag->scanType == LONG_SCAN) {
+		AddStudentRights(tag->tagID);
+		Serial.println("Adding to rights: student");
+
+	}
+	else {
+		FireBaseAddLog(tag->tagID);
+		Serial.println("Adding to log: teacher");
+		// Open door, add to log
+	}
+}
+
+static void StudentTask(scannedTag_t *tag) {
+	Serial.println("Adding to log: student");
+	FireBaseAddLog(tag->tagID);
+	// Timestamp check
+	// Open door, add to log
+}
+
+
+void FireBaseTask(scannedTag_t *tag){
+
+	if (tag->tagID == "") {
+		return;
+	}
+
 	if (FireBaseReady(sendDataPrev))
 	{
 		sendDataPrev = millis();
-		if(Firebase.RTDB.getJSON(&fbdo,"log/")){
-			fjson = fbdo.to<FirebaseJson>();
-			std::string str;
-			fjson.toString(str, '\n');
-			Serial.println("Json");
-			// Serial.println(str.c_str());
+		String type = FireBaseGetUUID(tag->tagID);
+		if (type == "teacher"){
+			TeacherTask(tag);
 		}
-		else
-		{
-			Serial.println("FAILED");
-			Serial.println("REASON: " + fbdo.errorReason());
+		else if(type == "student"){
+			StudentTask(tag);
 		}
-
-		if (Firebase.RTDB.setJSON(&fbdo, "test/int", &fjson)){
-			Serial.println("PASSED");
-			Serial.println("PATH: " + fbdo.dataPath());
-			Serial.println("TYPE: " + fbdo.dataType());
+		else{
+			Serial.println("Tag not found");
 		}
-		// Write an Int number on the database path test/int
-		// if (Firebase.RTDB.setInt(&fbdo, "test/int", count))
-		// {
-		// 	Serial.println("PASSED");
-		// 	Serial.println("PATH: " + fbdo.dataPath());
-		// 	Serial.println("TYPE: " + fbdo.dataType());
-		// }
-		else
-		{
-			Serial.println("FAILED");
-			Serial.println("REASON: " + fbdo.errorReason());
-		}
-		count++;
-
-		// Write a Float number on the database path test/float
-		if (Firebase.RTDB.pushTimestamp(&fbdo, "test/float"))
-		{
-			Serial.println("PASSED");
-			Serial.println("PATH: " + fbdo.dataPath());
-			Serial.println("TYPE: " + fbdo.dataType());
-		}
-		else
-		{
-			Serial.println("FAILED");
-			Serial.println("REASON: " + fbdo.errorReason());
-		}
+		Serial.println(type);
 	}
 }
