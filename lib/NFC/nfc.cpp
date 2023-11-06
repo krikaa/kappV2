@@ -22,17 +22,20 @@ uint32_t nfc_last_conn = 0;
 boolean restart_required = true;
 boolean verbose = false;
 
-void NfcBegin(){
-	if(nfc.begin()){
+void NfcBegin()
+{
+	if (nfc.begin())
+	{
 		Serial.print("NFC Begin successful");
 	}
-	else{
+	else
+	{
 		Serial.print("NFC Begin failed");
 	}
 }
 
 boolean ReadNFC(String *UUID)
-{	
+{
 	tagUUID = "";
 	while (nfc.tagPresent(10)) // Read until present or 20 same scans detected
 	{
@@ -43,25 +46,30 @@ boolean ReadNFC(String *UUID)
 	}
 	digitalWrite(0, LOW);
 	*UUID = tagUUID;
-	
-	if(tagUUID == "") {
+
+	if (tagUUID == "")
+	{
 		return false;
 	}
 
 	return true;
 }
 
-boolean ReadNewCard(String *UUID){
+boolean ReadNewCard(String *UUID)
+{
 	Serial.println("Reading new card");
 	for (int i = 0; i < 50; i++)
 	{
-		if(nfc.connected(0)){
-			if(ReadNFC(UUID)){
+		if (nfc.connected(0))
+		{
+			if (ReadNFC(UUID))
+			{
 				break;
 			}
 			restart_required = false;
 		}
-		else{
+		else
+		{
 			restart_required = true;
 			NfcBegin();
 		}
@@ -69,14 +77,18 @@ boolean ReadNewCard(String *UUID){
 	return !UUID->isEmpty();
 }
 
-boolean NfcTask(String *UUID) {
-	if((millis() - nfc_last_conn) > 0 || restart_required) {
-		if (nfc.connected(0)) {
+boolean NfcTask(String *UUID)
+{
+	if ((millis() - nfc_last_conn) > 0 || restart_required)
+	{
+		if (nfc.connected(0))
+		{
 			ReadNFC(UUID);
 			nfc_last_conn = millis();
 			restart_required = false;
 		}
-		else{
+		else
+		{
 			restart_required = true;
 			NfcBegin();
 		}

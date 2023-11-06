@@ -3,11 +3,11 @@
 #include "FBServer.h"
 #include "SerialDebug.h"
 
-#define OPEN 			true
-#define CLOSED 			false
+#define OPEN true
+#define CLOSED false
 
-#define DOOR_OPEN_MS 	2500
-#define DOOR_LED_PIN 	2
+#define DOOR_OPEN_MS 2500
+#define DOOR_LED_PIN 2
 
 String UUID;
 
@@ -15,7 +15,8 @@ String tagID = "";
 uint32_t door_last_poll = 0;
 boolean door_state = CLOSED;
 
-void Blink(){
+void Blink()
+{
 	digitalWrite(DOOR_LED_PIN, HIGH);
 	delay(100);
 	digitalWrite(DOOR_LED_PIN, LOW);
@@ -29,26 +30,32 @@ void Blink(){
 	digitalWrite(DOOR_LED_PIN, LOW);
 }
 
-void DoorStateChange() {
-    if (digitalRead(DOOR_LED_PIN) == HIGH) {
-        // Door is open
-        if (!door_state) {
-            // Door has just been opened
+void DoorStateChange()
+{
+	if (digitalRead(DOOR_LED_PIN) == HIGH)
+	{
+		// Door is open
+		if (!door_state)
+		{
+			// Door has just been opened
 			door_last_poll = millis();
-            door_state = OPEN;
+			door_state = OPEN;
 			// Serial.println("Door open");
-        }
+		}
 
-        if (door_state && (millis() - door_last_poll >= DOOR_OPEN_MS)) {
-            // Door has been open for more than 5 seconds
-            digitalWrite(DOOR_LED_PIN, LOW); // Indicate door is closed
-            door_state = CLOSED;
+		if (door_state && (millis() - door_last_poll >= DOOR_OPEN_MS))
+		{
+			// Door has been open for more than 5 seconds
+			digitalWrite(DOOR_LED_PIN, LOW); // Indicate door is closed
+			door_state = CLOSED;
 			// Serial.println("Door closed");
-        }
-    } else {
-        // Door is closed
-        door_state = CLOSED;
-    }
+		}
+	}
+	else
+	{
+		// Door is closed
+		door_state = CLOSED;
+	}
 }
 
 void setup()
@@ -68,7 +75,8 @@ void setup()
 
 void loop()
 {
-	if(NfcTask(&UUID)) { // Returns scanned tagID, "" if not present
+	if (NfcTask(&UUID))
+	{ // Returns scanned tagID, "" if not present
 		door_last_poll = millis();
 		digitalWrite(DOOR_LED_PIN, HIGH); // OPEN
 	}
@@ -76,9 +84,7 @@ void loop()
 	DoorStateChange();
 
 	FireBaseTask(&UUID);
-	
 }
-
 
 /*
 TODO: 	1) When NFC reader disconnects add reconnect.
@@ -89,8 +95,4 @@ TODO: 	1) When NFC reader disconnects add reconnect.
 				Connected:		True/false
 				Last active:	Timestamp
 
-*/		
-
-
-
-
+*/
