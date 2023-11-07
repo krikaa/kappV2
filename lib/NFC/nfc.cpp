@@ -4,18 +4,18 @@
 #include <PN532_I2C.h>
 #include <PN532.h>
 #include <NfcAdapter.h>
-PN532_I2C interface(Wire);
-NfcAdapter nfc = NfcAdapter(interface);
 
 #define NFC_TIMEOUT_MS 1000
 #define NFC_RESTART_MS 2000
-#define NFC_POWER_PIN 16
 
+// SPI:
 // PN532_SPI interface(SPI, 15);
-// PN532_I2C interface(Wire);
-// SoftwareSerial SWSerial( 12, 14 ); // RX, TX
-// PN532_SWHSU interface(SWSerial);
-// NfcAdapter nfc = NfcAdapter(interface); // create an NFC adapter object
+// NfcAdapter nfc = NfcAdapter(interface); 
+
+// I2C:
+PN532_I2C interface(Wire);
+NfcAdapter nfc = NfcAdapter(interface);
+
 
 String tagUUID = "";
 uint32_t nfc_last_conn = 0;
@@ -37,7 +37,7 @@ void NfcBegin()
 boolean ReadNFC(String *UUID)
 {
 	tagUUID = "";
-	while (nfc.tagPresent(10)) // Read until present or 20 same scans detected
+	while (nfc.tagPresent(10)) // Read until present 10ms timeout
 	{
 		digitalWrite(0, HIGH); // Green led while scanning
 		NfcTag nfcCard = nfc.read();
@@ -55,10 +55,11 @@ boolean ReadNFC(String *UUID)
 	return true;
 }
 
+// When teacher adds student card
 boolean ReadNewCard(String *UUID)
 {
 	Serial.println("Reading new card");
-	for (int i = 0; i < 50; i++)
+	for (int i = 0; i < 50; i++) // TODO: Change Hardcoded 50.
 	{
 		if (nfc.connected(0))
 		{
@@ -81,13 +82,13 @@ boolean NfcTask(String *UUID)
 {
 	if ((millis() - nfc_last_conn) > 0 || restart_required)
 	{
-		if (nfc.connected(0))
+		if (nfc.connected(0)) // (0) - No debug messages, (1 or empty) - Debug messages
 		{
 			ReadNFC(UUID);
 			nfc_last_conn = millis();
 			restart_required = false;
 		}
-		else
+		else // Tries to restart
 		{
 			restart_required = true;
 			NfcBegin();

@@ -24,5 +24,7 @@ struct tm Get_Epoch_Time();
 CMD_TYPE_E FireBaseTask(String *);
 
 struct tm ConvertTimeStamp(unsigned long);
+unsigned long long ConvertToTimeStamp(struct tm timeinfo);
+struct tm ConvertFromTimeStamp(unsigned long long tstamp);
 struct tm GetSemesterEnd();
 

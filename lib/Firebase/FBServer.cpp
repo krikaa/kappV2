@@ -11,8 +11,9 @@
 // Provide the RTDB payload printing info and other helper functions.
 #include "addons/RTDBHelper.h"
 
-#define WIFI_SSID "CGA2121_2.4GHZ"
-#define WIFI_PASSWORD "kell1234"
+#define WIFI_SSID "CGA2121_2.4GHZ" 	// Change into your own WiFi SSID
+#define WIFI_PASSWORD "kell1234"	// Change the password
+
 #define API_KEY "AIzaSyDAprMNQ1yMMMm0AFMB_KIQuyNl7WLr7Cw"
 #define DATABASE_URL "nutikapp-default-rtdb.europe-west1.firebasedatabase.app"
 
@@ -34,7 +35,7 @@ uint32_t nextEntryNumber = 1;
 int count = 0;
 bool signupOK = false;
 
-static void PrintTime(struct tm timeinfo)
+static void PrintTime(struct tm timeinfo) // For debugging
 {
 	int year = timeinfo.tm_year + 1900;
 	int month = timeinfo.tm_mon + 1; // Month is 0-based, so add 1 to get the real month (1-12)
@@ -53,8 +54,19 @@ static void PrintTime(struct tm timeinfo)
 	Serial.println(" ");
 }
 
-// Get_Epoch_Time() Function that gets current epoch time
-struct tm Get_Epoch_Time()
+static void PrintUser(authorized_user_t user) // For debugging
+{
+	Serial.print("UUID: ");
+	Serial.println(user.UUID);
+	Serial.print("Added:");
+	PrintTime(ConvertFromTimeStamp(user.date_added));
+	Serial.print("Owner: ");
+	Serial.println(user.owner);
+	Serial.print("Type: ");
+	Serial.println(user.type);
+}
+
+struct tm Get_Epoch_Time() // Querys current time from NTP server
 {
 	time_t now;
 	struct tm timeinfo;
@@ -67,7 +79,7 @@ struct tm Get_Epoch_Time()
 	return timeinfo;
 }
 
-struct tm ConvertFromTimeStamp(unsigned long long tstamp)
+struct tm ConvertFromTimeStamp(unsigned long long tstamp) // Converts timestamp E.g: 169593923 into struct tm
 {
 	time_t now = static_cast<time_t>(tstamp);
 	struct tm timeinfo;
@@ -75,14 +87,14 @@ struct tm ConvertFromTimeStamp(unsigned long long tstamp)
 	if (!getLocalTime(&timeinfo))
 	{
 		Serial.println("Failed to obtain time");
-		return timeinfo;
+		return timeinfo; // TODO: return some error when fails.
 	}
 	time(&now);
-	PrintTime(timeinfo);
+	// PrintTime(timeinfo);
 	return timeinfo;
 }
 
-static unsigned long long ConvertToTimeStamp(struct tm timeinfo)
+unsigned long long ConvertToTimeStamp(struct tm timeinfo) // Converts struct tm into timestamp 169593923 
 {
 	time_t timestamp = mktime(&timeinfo);
 
@@ -98,11 +110,16 @@ static unsigned long long ConvertToTimeStamp(struct tm timeinfo)
 	}
 }
 
+void ConfigTime()
+{
+	configTime(TIMEZONE_OFFSET, DAY_LIGHT_SAVINGS, NTP_SERVER);
+}
+
 // Sygis semester: ~ 04.09 - 21.01 | kuud: 7, 8, 9, 10, 11, 12, 1
 // Kevad semester: ~ 29.01 - 12.6  | kuud: 1, 2, 3, 4, 5, 6
 
-struct tm GetSemesterEnd()
-{ // Returns struct tm of semester end
+struct tm GetSemesterEnd() // Returns struct tm of semester end
+{ 
 
 	struct tm current_time = Get_Epoch_Time();
 
@@ -160,53 +177,6 @@ struct tm GetSemesterEnd()
 	return current_time;
 }
 
-void ConfigTime()
-{
-	configTime(TIMEZONE_OFFSET, DAY_LIGHT_SAVINGS, NTP_SERVER);
-}
-
-void ConnectWifi()
-{
-	WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-	Serial.println("");
-	Serial.println("Connecting to Wi-Fi");
-	while (WiFi.status() != WL_CONNECTED) // Add timeout
-	{
-		Serial.print(".");
-		delay(100);
-	}
-	Serial.println();
-	Serial.print("Connected with IP: ");
-	Serial.println(WiFi.localIP());
-	Serial.println();
-}
-
-void ConnectFirebase()
-{
-	/* Assign the api key (required) */
-	config.api_key = API_KEY;
-
-	/* Assign the RTDB URL (required) */
-	config.database_url = DATABASE_URL;
-
-	/* Sign up */
-	if (Firebase.signUp(&config, &auth, "", ""))
-	{
-		Serial.println("Signup OK");
-		signupOK = true;
-	}
-	else
-	{
-		Serial.printf("%s\n", config.signer.signupError.message.c_str());
-	}
-
-	/* Assign the callback function for the long running token generation task */
-	config.token_status_callback = tokenStatusCallback; // see addons/TokenHelper.h
-
-	Firebase.begin(&config, &auth);
-	Firebase.reconnectWiFi(true);
-}
-
 static inline boolean IsFireBaseReady(uint32_t sendDataPrev)
 {
 	if (Firebase.ready() && signupOK && (millis() - sendDataPrev > 1000 || sendDataPrev == 0))
@@ -216,7 +186,7 @@ static inline boolean IsFireBaseReady(uint32_t sendDataPrev)
 	return false;
 }
 
-static FirebaseJson SetLogEntryJSON(String tagUUID, String name, String type)
+static FirebaseJson SetLogEntryJSON(String tagUUID, String name, String type) // Returns json of log entry
 {
 	FirebaseJson fbjson;
 	fbjson.add("name", name);
@@ -227,34 +197,52 @@ static FirebaseJson SetLogEntryJSON(String tagUUID, String name, String type)
 	return fbjson;
 }
 
-static String GetUserInfo(String tagUUID, authorized_user_t *user)
+static FirebaseJson SetStudentJSON()
+{
+	FirebaseJson fbjson;
+	struct tm semester_end = GetSemesterEnd();									  // Gets semester end date
+	unsigned long long semester_end_timestamp = ConvertToTimeStamp(semester_end); // Converts into timestamp
+	fbjson.add("owner", "TBD");
+	fbjson.add("type", "student"); 						// Default value is student.
+	fbjson.add("date_valid", semester_end_timestamp);	// From web interface can change added card type
+
+	return fbjson;
+}
+
+static boolean GetUserInfo(String tagUUID, authorized_user_t *user)
 {
 	FirebaseJson fbjson;
 
-	if (Firebase.RTDB.getJSON(&fbdo, "cards/" + tagUUID))
+	if (Firebase.RTDB.getJSON(&fbdo, "cards/" + tagUUID)) // Looks if cards contains a node that satisfies nodeName == tagUUID
 	{
 		fbjson = fbdo.to<FirebaseJson>();
 		String jsonStr;
 		fbjson.toString(jsonStr);
-		// Serial.println(jsonStr);
 		DynamicJsonDocument doc(1024);
 		DeserializationError error = deserializeJson(doc, jsonStr);
 		if (error)
 		{
 			Serial.print(F("JSON parsing failed: "));
 			Serial.println(error.c_str());
-			return String();
+			return false;
 		}
 
+		// TODO:
+		// Compare date_valid and current time.
+		// If current time > date_valid return false
+		// Pay attention: 1700000001 > 1700000000000
+		// Although 1700000000000 as a number is bigger.
+		// Might have to convert to struct tm first to compare.
+		
 		user->UUID = tagUUID;
 		user->type = doc["type"].as<String>();
 		user->owner = doc["owner"].as<String>();
 		user->date_added = doc["date_added"].as<unsigned long long>();
 		user->date_valid = doc["date_valid"].as<unsigned long long>();
-		return user->type;
+		return true;
 	}
 	Serial.print(F("Doesnt exist"));
-	return String();
+	return false;
 }
 
 static int GetNextLogNumber()
@@ -318,40 +306,29 @@ static CMD_TYPE_E AddToLog(authorized_user_t *user)
 	return CMD_DONT_OPEN;
 }
 
-static FirebaseJson SetStudentJSON()
+static CMD_TYPE_E AddStudentRights(String tagUUID) // Reads new card and saves into cards/
 {
-	FirebaseJson fbjson;
-	struct tm semester_end = GetSemesterEnd();									  // Gets semester end date
-	unsigned long long semester_end_timestamp = ConvertToTimeStamp(semester_end); // Converts into timestamp
-	fbjson.add("owner", "TBD");
-	fbjson.add("type", "teacher"); // UNTILL NEW SCAN SET
-	fbjson.add("date_valid", semester_end_timestamp);
-
-	return fbjson;
-}
-
-static boolean AddStudentRights(String tagUUID)
-{
-	if (!ReadNewCard(&tagUUID))
+	if (!ReadNewCard(&tagUUID)) // Changes value of tagUUID
 	{
 		Serial.println("Failed to read new card");
-		return false;
+		return CMD_DONT_OPEN;
 	}
 	FirebaseJson fbjson = SetStudentJSON();
-	if (Firebase.RTDB.setJSON(&fbdo, "cards/" + tagUUID, &fbjson))
+	if (Firebase.RTDB.setJSON(&fbdo, "cards/" + tagUUID, &fbjson)) // Adds new scanned card
 	{
 		if (Firebase.RTDB.setTimestamp(&fbdo, "cards/" + tagUUID + "/date_added"))
 		{
 			Serial.println("Student added");
-			return true;
+			return CMD_OPEN;
 		}
 	}
 	Serial.println("ERROR: Student not added");
-	return false;
+	return CMD_DONT_OPEN;
 }
 
-static char AskForInput()
-{ // Temporary function until screen is used
+// Temporary function until screen is used
+static char AskForInput() 
+{ 
 	Serial.println("1 - Add student");
 	Serial.println("2 - Open door");
 	long timeout = millis();
@@ -367,7 +344,7 @@ static char AskForInput()
 				return inByte;
 			}
 		}
-	} while (millis() - timeout < 5000);
+	} while (millis() - timeout < 5000); // Waits for 5 seconds from serial monitor input
 
 	Serial.println("Timeout");
 	return '0';
@@ -375,16 +352,17 @@ static char AskForInput()
 
 static CMD_TYPE_E TeacherTask(authorized_user_t *user)
 {
-	char cmdAnswer = AskForInput();
+	char cmdAnswer = AskForInput(); // Change to screen input later
 	switch (cmdAnswer)
 	{
 	case ADD_STUDENT:
-		AddStudentRights(user->UUID);
-		return CMD_SCAN_NEW;
+		return AddStudentRights(user->UUID);
 		break;
+
 	case OPEN_DOOR:
 		return AddToLog(user);
 		break;
+
 	default:
 		Serial.println("Wrong input");
 		break;
@@ -394,32 +372,11 @@ static CMD_TYPE_E TeacherTask(authorized_user_t *user)
 
 static CMD_TYPE_E StudentTask(authorized_user_t *user)
 {
-	// Serial.println("Adding to log: student");
 	if (AddToLog(user))
 	{
 		return CMD_OPEN;
 	}
 	return CMD_DONT_OPEN;
-
-	// Timestamp check
-	// Open door, add to log
-}
-
-// TODO:
-// Check status of locker after every 5 seconds.
-// to see if from web interface locker has been opened
-// returns enum command - Open locker, Dont open and scan again
-
-static void PrintUser(authorized_user_t user)
-{
-	Serial.print("UUID: ");
-	Serial.println(user.UUID);
-	Serial.print("Added:");
-	PrintTime(ConvertFromTimeStamp(user.date_added));
-	Serial.print("Owner: ");
-	Serial.println(user.owner);
-	Serial.print("Type: ");
-	Serial.println(user.type);
 }
 
 CMD_TYPE_E FireBaseTask(String *UUID)
@@ -429,26 +386,81 @@ CMD_TYPE_E FireBaseTask(String *UUID)
 	{
 		return CMD_DONT_OPEN;
 	}
+
 	authorized_user_t user;
+
 	if (IsFireBaseReady(sendDataPrev))
 	{
+		// TODO:
+		// Check status of locker after every ~ 5 seconds.
+		// to see if from web interface locker has been opened
+		// returns enum command - CMD_DONT_OPEN or CMD_OPEN
+
 		sendDataPrev = millis();
-		String type = GetUserInfo(*UUID, &user);
-		PrintUser(user);
-		if (type == "teacher")
-		{
-			return TeacherTask(&user);
+
+		// Check if scanned card is one of the authorized user
+		if(!GetUserInfo(*UUID, &user)){
+			Serial.println("User not found");
+			return CMD_DONT_OPEN;
 		}
-		else if (type == "student")
+		PrintUser(user); // For debugging
+		 
+		if (user.type == "teacher") // Card type: teacher
 		{
-			return StudentTask(&user);
+			return TeacherTask(&user); // Has ability to add or open
+		}
+		else if (user.type == "student") // Card type: student
+		{
+			return StudentTask(&user); // Has ability to open
 		}
 		else
 		{
 			Serial.println("Scanned UUID does not have access");
 			return CMD_DONT_OPEN;
 		}
-		Serial.println(type);
+		Serial.println(user.type);
 	}
 	return CMD_DONT_OPEN;
+}
+
+void ConnectWifi()
+{
+	WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+	Serial.println("");
+	Serial.println("Connecting to Wi-Fi");
+	while (WiFi.status() != WL_CONNECTED) // Add timeout
+	{
+		Serial.print(".");
+		delay(100);
+	}
+	Serial.println();
+	Serial.print("Connected with IP: ");
+	Serial.println(WiFi.localIP());
+	Serial.println();
+}
+
+void ConnectFirebase()
+{
+	/* Assign the api key (required) */
+	config.api_key = API_KEY;
+
+	/* Assign the RTDB URL (required) */
+	config.database_url = DATABASE_URL;
+
+	/* Sign up */
+	if (Firebase.signUp(&config, &auth, "", ""))
+	{
+		Serial.println("Signup OK");
+		signupOK = true;
+	}
+	else
+	{
+		Serial.printf("%s\n", config.signer.signupError.message.c_str());
+	}
+
+	/* Assign the callback function for the long running token generation task */
+	config.token_status_callback = tokenStatusCallback; // see addons/TokenHelper.h
+
+	Firebase.begin(&config, &auth);
+	Firebase.reconnectWiFi(true);
 }
