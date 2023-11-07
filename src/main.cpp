@@ -15,7 +15,7 @@ String tagID = "";
 uint32_t door_last_poll = 0;
 boolean door_state = CLOSED;
 
-void Blink()
+void Blink() // For debugging.
 {
 	digitalWrite(DOOR_LED_PIN, HIGH);
 	delay(100);
@@ -32,7 +32,7 @@ void Blink()
 
 void DoorStateChange()
 {
-	if (digitalRead(DOOR_LED_PIN) == HIGH)
+	if (digitalRead(DOOR_LED_PIN) == HIGH) // Replace with solenoid later
 	{
 		// Door is open
 		if (!door_state)
@@ -45,7 +45,7 @@ void DoorStateChange()
 
 		if (door_state && (millis() - door_last_poll >= DOOR_OPEN_MS))
 		{
-			// Door has been open for more than 5 seconds
+			// Door has been open for more than DOOR_OPEN_MS
 			digitalWrite(DOOR_LED_PIN, LOW); // Indicate door is closed
 			door_state = CLOSED;
 			// Serial.println("Door closed");
@@ -61,38 +61,58 @@ void DoorStateChange()
 void setup()
 {
 	pinMode(DOOR_LED_PIN, OUTPUT);
-	pinMode(0, OUTPUT);
-	pinMode(16, OUTPUT);
+	pinMode(0, OUTPUT); // For debugging: LED high while NFC reader scanning
 	Serial.begin(115200);
 
-	ConnectWifi();
+	// In FBServer.cpp change these for ConnectWifi()
+	// #define WIFI_SSID ""
+	// #define WIFI_PASSWORD ""
+	
+	ConnectWifi(); 
 	ConnectFirebase();
 	ConfigTime();
 
-	NfcBegin();
-	Blink(); // For showing when setup is done
+	NfcBegin(); // Sometimes fails - Manually reconnect VCC wire for NFC reader.
+	Blink(); 	// For debugging - show when setup is done
 }
 
 void loop()
 {
+	// Returns true if tag scanned, saves into UUID
 	if (NfcTask(&UUID))
-	{ // Returns scanned tagID, "" if not present
+	{ 
 		door_last_poll = millis();
-		digitalWrite(DOOR_LED_PIN, HIGH); // OPEN
+		digitalWrite(DOOR_LED_PIN, HIGH); // Open door
 	}
 
-	DoorStateChange();
+	DoorStateChange(); 	// Checks if door was opened
+						// If opened, keeps open for DOOR_OPEN_MS
+						// Else just keeps it closed
 
 	FireBaseTask(&UUID);
 }
 
+// TODO:
+// RN it opens door when card is scanned
+// Should open when scanned card has access 
+// SMTH like:
 /*
-TODO: 	1) When NFC reader disconnects add reconnect.
+	NfcTask(&UUID);
+
+	if (FireBaseTask(&UUID) == CMD_OPEN){
+		door_last_poll = millis();
+		digitalWrite(DOOR_LED_PIN, HIGH); // Open door
+	}
+
+	DoorStateChange(); 
+*/
+
+/*		MAYBE TODO:
+ 		1) When NFC reader disconnects add reconnect.
 		2) Keep log of statuses of devices.
 		Maybe after every 30min wake from sleep and send statuses.
 		TBD: Wifi stay connected when sleeping? Power consumption with and without.
 		Eg. NFC:
 				Connected:		True/false
 				Last active:	Timestamp
-
 */
