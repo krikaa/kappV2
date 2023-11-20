@@ -42,7 +42,7 @@ NfcTag MifareClassic::read(byte *uid, unsigned int uidLength)
     }
     else
     {
-        Serial.println(F("Tag is not NDEF formatted."));
+        // Serial.println(F("Tag is not NDEF formatted."));
         // TODO set tag.isFormatted = false
         return NfcTag(uid, uidLength, MIFARE_CLASSIC);
     }

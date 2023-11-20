@@ -86,7 +86,7 @@ boolean MifareUltralight::isUnformatted()
     }
     else
     {
-        Serial.print(F("Error. Failed read page "));Serial.println(page);
+        // Serial.print(F("Error. Failed read page "));Serial.println(page);
         return false;
     }
 }

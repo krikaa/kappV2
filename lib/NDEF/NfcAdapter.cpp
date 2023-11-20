@@ -48,11 +48,15 @@ boolean NfcAdapter::connected(boolean verbose)
     return true;
 }
 
-boolean NfcAdapter::tagPresent(unsigned long timeout)
+boolean NfcAdapter::startDetection(){
+    return shield->startPassiveTargetIDDetection(PN532_MIFARE_ISO14443A);
+}
+
+boolean NfcAdapter::tagPresent( String *UUID, unsigned long timeout)
 {
     uint8_t success;
     uidLength = 0;
-
+    *UUID = "";
     if (timeout == 0)
     {
         success = shield->readPassiveTargetID(PN532_MIFARE_ISO14443A, uid, (uint8_t*)&uidLength);
@@ -60,7 +64,24 @@ boolean NfcAdapter::tagPresent(unsigned long timeout)
     else
     {
         success = shield->readPassiveTargetID(PN532_MIFARE_ISO14443A, uid, (uint8_t*)&uidLength, timeout);
+        
+        for (int i = 0; i < uidLength; i++)
+        {
+            if (i > 0)
+            {
+                *UUID += " ";
+            }
+
+            if (uid[i] < 0xF)
+            {
+                *UUID += "0";
+            }
+
+            *UUID += String((unsigned int)uid[i], (unsigned char)HEX);
+        }
+        UUID->toUpperCase();
     }
+    
     return success;
 }
 
@@ -148,7 +169,6 @@ NfcTag NfcAdapter::read()
         // TODO should set type here
         return NfcTag(uid, uidLength);
     }
-
 }
 
 boolean NfcAdapter::write(NdefMessage& ndefMessage)

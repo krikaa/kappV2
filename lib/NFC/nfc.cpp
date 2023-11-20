@@ -16,6 +16,7 @@
 PN532_I2C interface(Wire);
 NfcAdapter nfc = NfcAdapter(interface);
 
+boolean nfc_connected = true;
 
 String tagUUID = "";
 uint32_t nfc_last_conn = 0;
@@ -24,30 +25,28 @@ boolean verbose = false;
 
 void NfcBegin()
 {
-	if (nfc.begin())
+	if (nfc.begin(0))
 	{
-		Serial.print("NFC Begin successful");
+		Serial.println("NFC Begin successful");
+		nfc_connected = true;
 	}
 	else
 	{
-		Serial.print("NFC Begin failed");
+		Serial.println("NFC Begin failed");
+		nfc_connected = false;
 	}
 }
 
 boolean ReadNFC(String *UUID)
 {
-	tagUUID = "";
-	while (nfc.tagPresent(10)) // Read until present 10ms timeout
+	if (nfc.tagPresent(UUID, 500)) // Read until present 10ms timeout
 	{
-		digitalWrite(0, HIGH); // Green led while scanning
-		NfcTag nfcCard = nfc.read();
-		tagUUID = nfcCard.getUidString();
-		Serial.println(tagUUID);
+		// NfcTag nfcCard = nfc.read();
+		// tagUUID = nfcCard.getUidString();
+		Serial.println(*UUID);
 	}
-	digitalWrite(0, LOW);
-	*UUID = tagUUID;
 
-	if (tagUUID == "")
+	if (*UUID == "")
 	{
 		return false;
 	}
@@ -80,17 +79,15 @@ boolean ReadNewCard(String *UUID)
 
 boolean NfcTask(String *UUID)
 {
-	if ((millis() - nfc_last_conn) > 0 || restart_required)
+	if ((millis() - nfc_last_conn) > 1000 || !nfc_connected)
 	{
 		if (nfc.connected(0)) // (0) - No debug messages, (1 or empty) - Debug messages
 		{
 			ReadNFC(UUID);
 			nfc_last_conn = millis();
-			restart_required = false;
 		}
 		else // Tries to restart
 		{
-			restart_required = true;
 			NfcBegin();
 		}
 	}

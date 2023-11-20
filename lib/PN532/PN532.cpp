@@ -430,6 +430,17 @@ bool PN532::readPassiveTargetID(uint8_t cardbaudrate, uint8_t *uid, uint8_t *uid
     return 1;
 }
 
+bool PN532::startPassiveTargetIDDetection(uint8_t cardbaudrate) {
+    pn532_packetbuffer[0] = PN532_COMMAND_INLISTPASSIVETARGET;
+    pn532_packetbuffer[1] = 1; // max 1 cards at once (we can set this to 2 later)
+    pn532_packetbuffer[2] = cardbaudrate;
+
+    if (HAL(writeCommand)(pn532_packetbuffer, 3)) {
+        return 0x0;  // command failed
+    }
+    return true;
+}
+
 
 /***** Mifare Classic Functions ******/
 

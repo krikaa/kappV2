@@ -1,10 +1,9 @@
 #include <Arduino.h>
-#include "FBServer.h"
 #include <ESP8266WiFi.h>
 #include <Firebase_ESP_Client.h>
 #include <ArduinoJson.h>
+#include "FBServer.h"
 #include "time.h"
-#include "nfc.h"
 
 // Provide the token generation process info.
 #include "addons/TokenHelper.h"
@@ -32,6 +31,9 @@ FirebaseConfig config;
 
 uint32_t sendDataPrev = 0;
 uint32_t nextEntryNumber = 1;
+
+boolean wifi_connected;
+
 int count = 0;
 bool signupOK = false;
 
@@ -66,7 +68,7 @@ static void PrintUser(authorized_user_t user) // For debugging
 	Serial.println(user.type);
 }
 
-struct tm Get_Epoch_Time() // Querys current time from NTP server
+struct tm GetEpochTime() // Querys current time from NTP server
 {
 	time_t now;
 	struct tm timeinfo;
@@ -100,7 +102,7 @@ unsigned long long ConvertToTimeStamp(struct tm timeinfo) // Converts struct tm 
 
 	if (timestamp != -1)
 	{
-		return static_cast<unsigned long long>(timestamp);
+		return static_cast<unsigned long long>(timestamp) * 1000; // * 1000 for timestamp in ms format
 	}
 	else
 	{
@@ -121,7 +123,7 @@ void ConfigTime()
 struct tm GetSemesterEnd() // Returns struct tm of semester end
 { 
 
-	struct tm current_time = Get_Epoch_Time();
+	struct tm current_time = GetEpochTime();
 
 	// UNCOMMENT TO DEBUG/TEST THIS FUNCTION (REMOVE AFTER RELEASE)
 
@@ -179,20 +181,20 @@ struct tm GetSemesterEnd() // Returns struct tm of semester end
 
 static inline boolean IsFireBaseReady(uint32_t sendDataPrev)
 {
-	if (Firebase.ready() && signupOK && (millis() - sendDataPrev > 1000 || sendDataPrev == 0))
+	if (Firebase.ready() && signupOK && (millis() - sendDataPrev > 500 || sendDataPrev == 0))
 	{
 		return true;
 	}
 	return false;
 }
 
-static FirebaseJson SetLogEntryJSON(String tagUUID, String name, String type) // Returns json of log entry
+static FirebaseJson SetLogEntryJSON(String tagUUID, String name, String type, String action) // Returns json of log entry
 {
 	FirebaseJson fbjson;
 	fbjson.add("name", name);
 	fbjson.add("UUID", tagUUID);
 	fbjson.add("type", type);
-	fbjson.add("Event", "Opened");
+	fbjson.add("Event", action);
 
 	return fbjson;
 }
@@ -212,88 +214,55 @@ static FirebaseJson SetStudentJSON()
 static boolean GetUserInfo(String tagUUID, authorized_user_t *user)
 {
 	FirebaseJson fbjson;
+	FirebaseJsonData result;
+
+	// Default values when card doesnt exist
+	user->UUID = tagUUID;
+	user->owner = "TBD";
+	user->type = "unknown";
+	user->action = "Attempted open";
 
 	if (Firebase.RTDB.getJSON(&fbdo, "cards/" + tagUUID)) // Looks if cards contains a node that satisfies nodeName == tagUUID
 	{
 		fbjson = fbdo.to<FirebaseJson>();
-		String jsonStr;
-		fbjson.toString(jsonStr);
-		DynamicJsonDocument doc(1024);
-		DeserializationError error = deserializeJson(doc, jsonStr);
-		if (error)
-		{
-			Serial.print(F("JSON parsing failed: "));
-			Serial.println(error.c_str());
+		
+		unsigned long long current_timestamp = ConvertToTimeStamp(GetEpochTime());
+
+		fbjson.get(result, "owner");
+		user->owner = result.stringValue;
+
+		fbjson.get(result, "type");
+		user->type = result.stringValue;
+
+		fbjson.get(result, "date_added");
+		user->date_added = result.intValue;
+
+		fbjson.get(result, "date_valid");
+		unsigned long long date_valid_timestamp = (unsigned long long)result.doubleValue;
+
+		user->action = "Opened";
+
+		user->date_valid = date_valid_timestamp;
+
+		if(current_timestamp > date_valid_timestamp) {
+			Serial.println("The user's card has expired");
+			user->action = "Attempted open";
 			return false;
 		}
 
-		// TODO:
-		// Compare date_valid and current time.
-		// If current time > date_valid return false
-		// Pay attention: 1700000001 > 1700000000000
-		// Although 1700000000000 as a number is bigger.
-		// Might have to convert to struct tm first to compare.
-		
-		user->UUID = tagUUID;
-		user->type = doc["type"].as<String>();
-		user->owner = doc["owner"].as<String>();
-		user->date_added = doc["date_added"].as<unsigned long long>();
-		user->date_valid = doc["date_valid"].as<unsigned long long>();
 		return true;
 	}
-	Serial.print(F("Doesnt exist"));
+	Serial.println("User not found");
 	return false;
-}
-
-static int GetNextLogNumber()
-{ // Returns the next entry nr.
-	FirebaseJson fbjson;
-	QueryFilter query;
-	query.orderBy("$key");
-	query.limitToLast(1);
-	if (Firebase.RTDB.getJSON(&fbdo, "log", &query))
-	{
-		fbjson = fbdo.to<FirebaseJson>();
-		String jsonStr;
-		fbjson.toString(jsonStr);
-		DynamicJsonDocument doc(1024);
-		deserializeJson(doc, jsonStr);
-
-		const char *firstKey = doc.as<JsonObject>().begin()->key().c_str();
-		String keyString(firstKey);
-
-		int keyInt = keyString.toInt();
-
-		// Serial.print("Previous entry: ");
-		// Serial.println(keyInt);
-		if (keyInt == 0)
-		{
-			keyInt = 1;
-		}
-		// Serial.println(jsonStr.c_str());
-		return keyInt;
-	}
-	Serial.println("Get next entry error");
-	return 0; // Error
 }
 
 static CMD_TYPE_E AddToLog(authorized_user_t *user)
 {
-	FirebaseJson fbjson = SetLogEntryJSON(user->UUID, user->owner, user->type);
-	int log_count = GetNextLogNumber();
-	std::string log_str = std::to_string(log_count + 1);
+	FirebaseJson fbjson = SetLogEntryJSON(user->UUID, user->owner, user->type, user->action);
 
-	// Incase the database node was deleted.
-	// Because the query.limitToLast(1) will return 0
-	// if only 1 log in the node.
-	if (log_count == 0)
+	if (Firebase.RTDB.pushJSON(&fbdo, "log", &fbjson))
 	{
-		log_count++;
-	}
-
-	if (Firebase.RTDB.setJSON(&fbdo, "log/" + log_str, &fbjson))
-	{
-		if (Firebase.RTDB.setTimestamp(&fbdo, "log/" + log_str + "/timestamp"))
+		if (Firebase.RTDB.setTimestamp(&fbdo, fbdo.dataPath() + "/" + fbdo.pushName() + "/timestamp"))
 		{
 			Serial.println("Log added");
 			return CMD_OPEN;
@@ -338,16 +307,13 @@ static char AskForInput()
 		if (Serial.available())
 		{
 			inByte = Serial.read();
-			if (inByte == ADD_STUDENT || inByte == OPEN_DOOR)
-			{
-				Serial.println("Exiting loop");
+			if (inByte == ADD_STUDENT || inByte == OPEN_DOOR) {
 				return inByte;
 			}
 		}
 	} while (millis() - timeout < 5000); // Waits for 5 seconds from serial monitor input
 
-	Serial.println("Timeout");
-	return '0';
+	return OPEN_DOOR;
 }
 
 static CMD_TYPE_E TeacherTask(authorized_user_t *user)
@@ -370,18 +336,34 @@ static CMD_TYPE_E TeacherTask(authorized_user_t *user)
 	return CMD_DONT_OPEN;
 }
 
-static CMD_TYPE_E StudentTask(authorized_user_t *user)
+static inline CMD_TYPE_E StudentTask(authorized_user_t *user)
 {
-	if (AddToLog(user))
-	{
-		return CMD_OPEN;
+	return AddToLog(user);
+}
+
+// Checks every 5 seconds, 
+// Opens door if "Ava kapp" pressed on webpage.
+CMD_TYPE_E FireBaseCheckDoor() {
+	static uint32_t door_last_checked = 0;
+	static boolean solenoid_state = false;
+
+	if(millis() - door_last_checked > 5000) {
+		if (IsFireBaseReady(sendDataPrev)) {
+			if(Firebase.RTDB.getBool(&fbdo,"lockers/locker1/solenoid-activated")){
+				solenoid_state = fbdo.to<bool>();
+				door_last_checked = millis();
+			}
+			sendDataPrev = millis();
+		}
+	}
+	if(solenoid_state){
+		return CMD_KEEP_OPEN;
 	}
 	return CMD_DONT_OPEN;
 }
 
 CMD_TYPE_E FireBaseTask(String *UUID)
 {
-
 	if (*UUID == "")
 	{
 		return CMD_DONT_OPEN;
@@ -391,19 +373,12 @@ CMD_TYPE_E FireBaseTask(String *UUID)
 
 	if (IsFireBaseReady(sendDataPrev))
 	{
-		// TODO:
-		// Check status of locker after every ~ 5 seconds.
-		// to see if from web interface locker has been opened
-		// returns enum command - CMD_DONT_OPEN or CMD_OPEN
-
-		sendDataPrev = millis();
-
 		// Check if scanned card is one of the authorized user
 		if(!GetUserInfo(*UUID, &user)){
-			Serial.println("User not found");
+			AddToLog(&user);
 			return CMD_DONT_OPEN;
 		}
-		PrintUser(user); // For debugging
+		// PrintUser(user); // For debugging
 		 
 		if (user.type == "teacher") // Card type: teacher
 		{
@@ -418,10 +393,64 @@ CMD_TYPE_E FireBaseTask(String *UUID)
 			Serial.println("Scanned UUID does not have access");
 			return CMD_DONT_OPEN;
 		}
-		Serial.println(user.type);
+		sendDataPrev = millis();
 	}
 	return CMD_DONT_OPEN;
 }
+
+static void SendStatusWiFi(){
+	if(IsFireBaseReady(sendDataPrev)){
+		if(Firebase.RTDB.setTimestamp(&fbdo, "lockers/locker1/wifi-last-connected")){
+			Serial.println("\nWifi status sent");
+		}
+		sendDataPrev = millis();
+	}
+}
+
+static void SendStatusNFC(boolean status){
+	if(IsFireBaseReady(sendDataPrev)){
+		if(Firebase.RTDB.setBool(&fbdo, "lockers/locker1/nfc-connected", status)){
+			Serial.println("\nNFC status sent");
+		}
+		sendDataPrev = millis();
+	}
+}
+
+static void WiFiStatusTask(){
+	static uint32_t wifi_last_status_sent = 0;
+
+	if ((millis() - wifi_last_status_sent) > 120000) {	 	// Every 2 Minutes
+		SendStatusWiFi();								 	// Send status 
+
+		if(!WiFi.isConnected()) {							// Try to reconnect also
+			wifi_connected = false;
+			ConnectWifi();
+		}
+		else{
+			wifi_connected = true;
+		}
+		wifi_last_status_sent = millis();
+	}
+}
+
+void NFCStatusTask(){
+	static uint32_t nfc_last_status_sent = 0;
+	static boolean nfc_last_sent_status = false;
+
+
+	if (((millis() - nfc_last_status_sent) > 1000) && nfc_last_sent_status != nfc_connected){
+		SendStatusNFC(nfc_connected);
+		nfc_last_status_sent = millis();
+		nfc_last_sent_status = nfc_connected;
+	}
+}
+
+void DeviceStatusesTask(){
+	WiFiStatusTask();
+	NFCStatusTask();
+}
+
+
 
 void ConnectWifi()
 {
@@ -433,6 +462,7 @@ void ConnectWifi()
 		Serial.print(".");
 		delay(100);
 	}
+	wifi_connected = true;
 	Serial.println();
 	Serial.print("Connected with IP: ");
 	Serial.println(WiFi.localIP());
@@ -463,4 +493,16 @@ void ConnectFirebase()
 
 	Firebase.begin(&config, &auth);
 	Firebase.reconnectWiFi(true);
+
+	// if(Firebase.authenticated()){
+	// 	Serial.println("Authenticated");
+	// } 
+	// else {
+	// 	Serial.println("Not authenticated");
+	// }
+
+	// if (Firebase.isTokenExpired()){
+	// 	Firebase.refreshToken(&config);
+	// 	Serial.println("Refresh token");
+	// }
 }
