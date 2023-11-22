@@ -4,6 +4,7 @@
 #include <ArduinoJson.h>
 #include "FBServer.h"
 #include "time.h"
+#include "nfc_new.h"
 
 // Provide the token generation process info.
 #include "addons/TokenHelper.h"
@@ -30,6 +31,8 @@ FirebaseAuth auth;
 FirebaseConfig config;
 
 uint32_t sendDataPrev = 0;
+uint32_t sendDataPrevWifi = 0;
+uint32_t sendDataPrevSolenoid = 0;
 uint32_t nextEntryNumber = 1;
 
 boolean wifi_connected;
@@ -181,7 +184,7 @@ struct tm GetSemesterEnd() // Returns struct tm of semester end
 
 static inline boolean IsFireBaseReady(uint32_t sendDataPrev)
 {
-	if (Firebase.ready() && signupOK && (millis() - sendDataPrev > 500 || sendDataPrev == 0))
+	if (Firebase.ready() && signupOK && (millis() - sendDataPrev > 200 || sendDataPrev == 0))
 	{
 		return true;
 	}
@@ -341,27 +344,6 @@ static inline CMD_TYPE_E StudentTask(authorized_user_t *user)
 	return AddToLog(user);
 }
 
-// Checks every 5 seconds, 
-// Opens door if "Ava kapp" pressed on webpage.
-CMD_TYPE_E FireBaseCheckDoor() {
-	static uint32_t door_last_checked = 0;
-	static boolean solenoid_state = false;
-
-	if(millis() - door_last_checked > 5000) {
-		if (IsFireBaseReady(sendDataPrev)) {
-			if(Firebase.RTDB.getBool(&fbdo,"lockers/locker1/solenoid-activated")){
-				solenoid_state = fbdo.to<bool>();
-				door_last_checked = millis();
-			}
-			sendDataPrev = millis();
-		}
-	}
-	if(solenoid_state){
-		return CMD_KEEP_OPEN;
-	}
-	return CMD_DONT_OPEN;
-}
-
 CMD_TYPE_E FireBaseTask(String *UUID)
 {
 	if (*UUID == "")
@@ -398,19 +380,41 @@ CMD_TYPE_E FireBaseTask(String *UUID)
 	return CMD_DONT_OPEN;
 }
 
+// Checks every 5 seconds, 
+// Opens door if "Ava kapp" pressed on webpage.
+CMD_TYPE_E FireBaseCheckDoor() {
+	static uint32_t door_last_checked = 0;
+	static boolean solenoid_state = false;
+
+	if(millis() - door_last_checked > 5000) {
+		if (IsFireBaseReady(sendDataPrevSolenoid)) {
+			if(Firebase.RTDB.getBool(&fbdo,"lockers/locker1/solenoid-activated")){
+				solenoid_state = fbdo.to<bool>();
+				door_last_checked = millis();
+			}
+			sendDataPrevSolenoid = millis();
+		}
+	}
+	if(solenoid_state){
+		return CMD_KEEP_OPEN;
+	}
+	return CMD_DONT_OPEN;
+}
+
 static void SendStatusWiFi(){
-	if(IsFireBaseReady(sendDataPrev)){
+	if(IsFireBaseReady(sendDataPrevWifi)){
 		if(Firebase.RTDB.setTimestamp(&fbdo, "lockers/locker1/wifi-last-connected")){
 			Serial.println("\nWifi status sent");
 		}
-		sendDataPrev = millis();
+		sendDataPrevWifi = millis();
 	}
 }
 
 static void SendStatusNFC(boolean status){
 	if(IsFireBaseReady(sendDataPrev)){
 		if(Firebase.RTDB.setBool(&fbdo, "lockers/locker1/nfc-connected", status)){
-			Serial.println("\nNFC status sent");
+			Serial.print("NFC status sent: ");
+			status == false ? Serial.println("NOT CONNECTED") : Serial.println("CONNECTED");
 		}
 		sendDataPrev = millis();
 	}
@@ -419,12 +423,13 @@ static void SendStatusNFC(boolean status){
 static void WiFiStatusTask(){
 	static uint32_t wifi_last_status_sent = 0;
 
-	if ((millis() - wifi_last_status_sent) > 120000) {	 	// Every 2 Minutes
+	if ((millis() - wifi_last_status_sent) > 300000) {	 	// Every 5 Minutes
 		SendStatusWiFi();								 	// Send status 
 
 		if(!WiFi.isConnected()) {							// Try to reconnect also
 			wifi_connected = false;
 			ConnectWifi();
+			ConnectFirebase();
 		}
 		else{
 			wifi_connected = true;
@@ -438,10 +443,10 @@ void NFCStatusTask(){
 	static boolean nfc_last_sent_status = false;
 
 
-	if (((millis() - nfc_last_status_sent) > 1000) && nfc_last_sent_status != nfc_connected){
-		SendStatusNFC(nfc_connected);
+	if (((millis() - nfc_last_status_sent) > 1000) && nfc_last_sent_status != nfc_connected_new){
+		SendStatusNFC(nfc_connected_new);
 		nfc_last_status_sent = millis();
-		nfc_last_sent_status = nfc_connected;
+		nfc_last_sent_status = nfc_connected_new;
 	}
 }
 
@@ -478,15 +483,20 @@ void ConnectFirebase()
 	config.database_url = DATABASE_URL;
 
 	/* Sign up */
-	if (Firebase.signUp(&config, &auth, "", ""))
-	{
-		Serial.println("Signup OK");
-		signupOK = true;
-	}
-	else
-	{
-		Serial.printf("%s\n", config.signer.signupError.message.c_str());
-	}
+
+	auth.user.email = "FIREBASE_EMAIL";
+	auth.user.password = "FIREBASE_PASSWORD";
+	// if (Firebase.signUp(&config, &auth, "", ""))
+	// {
+	// 	Serial.println("Signup OK");
+	// 	signupOK = true;
+	// }
+	// else
+	// {
+	// 	Serial.printf("%s\n", config.signer.signupError.message.c_str());
+	// }
+
+	signupOK = true;
 
 	/* Assign the callback function for the long running token generation task */
 	config.token_status_callback = tokenStatusCallback; // see addons/TokenHelper.h

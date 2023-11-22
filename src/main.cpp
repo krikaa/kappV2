@@ -1,5 +1,6 @@
 #include <Arduino.h>
-#include "nfc.h"
+// #include "nfc.h"
+#include "nfc_new.h"
 #include "FBServer.h"
 #include "SerialDebug.h"
 #include <Wire.h>
@@ -7,8 +8,8 @@
 #define OPEN true
 #define CLOSED false
 
-#define DOOR_OPEN_MS 2500
-#define INDICATION_DURATION_MS 1000
+#define SOLENOID_OPEN_MS 			2500
+#define INDICATION_DURATION_MS 		1000
 
 #define INDICATE_SCAN_LED			0
 #define SOLENOID_LED_PIN 			2
@@ -26,16 +27,21 @@ boolean solenoid_state = CLOSED;
 
 volatile boolean door_state = CLOSED;
 volatile unsigned long lastDebounceTime = 0;
-const unsigned long debounceDelay = 150;
+const unsigned long debounceDelay = 100;
 
 
-void ICACHE_RAM_ATTR ISRoutine(){
+void IRAM_ATTR ISRoutine(){
 	unsigned long currentTime = millis();
 	if (currentTime - lastDebounceTime > debounceDelay)
 	{
-		door_state = !door_state;
-		digitalWrite(DOOR_OPEN_PIN, !digitalRead(DOOR_OPEN_PIN)); // Toggle the LED state
-
+		if (digitalRead(MAGNET_SENSOR_PIN) == HIGH) {
+			digitalWrite(DOOR_OPEN_PIN, HIGH);
+			door_state = OPEN;
+		}
+		else {
+			digitalWrite(DOOR_OPEN_PIN, LOW);
+			door_state = CLOSED;
+		}
 		lastDebounceTime = currentTime;
 	}
 }
@@ -53,9 +59,9 @@ void SolenoidStateChange()
 			Serial.println("Solenoid open");
 		}
 
-		if (solenoid_state && (millis() - solenoid_last_poll >= DOOR_OPEN_MS) && solenoid_cmd_web != CMD_KEEP_OPEN)
+		if (solenoid_state && (millis() - solenoid_last_poll >= SOLENOID_OPEN_MS) && solenoid_cmd_web != CMD_KEEP_OPEN)
 		{
-			// Solenoid has been open for more than DOOR_OPEN_MS
+			// Solenoid has been open for more than SOLENOID_OPEN_MS
 			digitalWrite(SOLENOID_LED_PIN, LOW); // Indicate solenoid is closed
 			solenoid_state = CLOSED;
 			Serial.println("Solenoid closed");
@@ -90,6 +96,26 @@ static void IndicateScan() {
     }
 }
 
+void CheckDoorState(){
+	static uint32_t last_door_check = 0;
+
+	if((millis() - last_door_check) > 2000){
+		if (digitalRead(MAGNET_SENSOR_PIN) == HIGH && digitalRead(DOOR_OPEN_PIN) == LOW) {
+			door_state = OPEN;
+			digitalWrite(DOOR_OPEN_PIN, HIGH);
+		}
+		else if (digitalRead(MAGNET_SENSOR_PIN) == LOW && digitalRead(DOOR_OPEN_PIN) == HIGH){
+			door_state = CLOSED;
+			digitalWrite(DOOR_OPEN_PIN, LOW);
+		}
+		// Serial.print("Solenoid: ");
+		// solenoid_state == CLOSED ? Serial.println("Closed") : Serial.println("Open");
+		// Serial.print("Door: ");
+		// door_state == CLOSED ? Serial.println("Closed") : Serial.println("Open");
+		last_door_check = millis();
+	}
+}
+
 void setup()
 {
 	pinMode(INDICATE_SCAN_LED, OUTPUT);
@@ -101,31 +127,28 @@ void setup()
 	// In FBServer.cpp change these for ConnectWifi()
 	// #define WIFI_SSID ""
 	// #define WIFI_PASSWORD ""
-
-	NfcBegin(); // Sometimes fails - Manually reconnect VCC wire for NFC reader.
 	Serial.begin(9600);
-	if(!Serial.available()) {
+	if(!Serial) {
 		delay(100);
 	}
+	Serial.println("Hello!");
+	NfcBeginNew(&UUID); // Sometimes fails - Manually reconnect VCC wire for NFC reader.
+	
 	ConnectWifi(); 
 	ConnectFirebase();
 	ConfigTime();
-	(nfc_connected == true) ? Serial.println("Connected") : Serial.println("Not connected");
-	attachInterrupt(MAGNET_SENSOR_PIN, ISRoutine, FALLING);
+	attachInterrupt(MAGNET_SENSOR_PIN, ISRoutine, CHANGE);
 }
-
-
 
 void loop()
 {
-	// Only use NFC specific tasks when solenoid is closed.
-	if (solenoid_state == CLOSED) { 
+	// Only use NFC specific tasks when solenoid and door are closed
+	if (solenoid_state == CLOSED && door_state == CLOSED) { 
 		// Returns true if tag scanned, saves into UUID
-		NfcTask(&UUID);
+		NfcTaskNew(&UUID);
 		IndicateScan();
 
 		solenoid_cmd_nfc = FireBaseTask(&UUID);
-
 		
 		if(solenoid_cmd_nfc == CMD_OPEN || solenoid_cmd_web == CMD_KEEP_OPEN) {
 			Beep(150);
@@ -136,12 +159,14 @@ void loop()
 
 	solenoid_cmd_web = FireBaseCheckDoor();
 
-	SolenoidStateChange(); 	// Checks if solenoid was opened
-	 					// If opened, keeps open for DOOR_OPEN_MS
-	 					// Else just keeps it closed
+	NfcStatusCheck(&UUID);
 
+	SolenoidStateChange(); 	// Checks if solenoid was opened
+	 						// If opened, keeps open for SOLENOID_OPEN_MS
+	 						// Else just keeps it closed
 	DeviceStatusesTask();
 
+	CheckDoorState();
 
 	UUID = "";
 }

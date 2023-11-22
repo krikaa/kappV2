@@ -4,7 +4,7 @@
 
 void NfcBegin();
 boolean NfcTask(String *);
-boolean ReadNFC(String *UUID);
-boolean ReadNewCard(String *UUID);
+boolean ReadNFC(String *);
+boolean ReadNewCard(String *);
 
 extern boolean nfc_connected;  
