@@ -5,6 +5,7 @@
 #include "FBServer.h"
 #include "time.h"
 #include "nfc_new.h"
+#include <EEPROM.h>
 
 // Provide the token generation process info.
 #include "addons/TokenHelper.h"
@@ -23,6 +24,8 @@
 
 #define ADD_STUDENT '1'
 #define OPEN_DOOR '2'
+
+#define MAX_TAG_LEN 21
 
 FirebaseData fbdo;
 FirebaseJson fjson;
@@ -214,8 +217,138 @@ static FirebaseJson SetStudentJSON()
 	return fbjson;
 }
 
-static boolean GetUserInfo(String tagUUID, authorized_user_t *user)
-{
+
+// Returns all users from FireBase that should have access
+const char** GetAllUsersFireBase() {
+	if(!wifi_connected) return NULL;
+
+	FirebaseJson fbjson;
+	QueryFilter filter;
+	FirebaseJsonData result;
+
+	filter.orderBy("$key");
+	if(IsFireBaseReady(sendDataPrev)){
+		if (Firebase.RTDB.getJSON(&fbdo, "cards/", &filter)) // Looks if cards contains a node that satisfies nodeName == tagUUID
+		{
+			fbjson = fbdo.to<FirebaseJson>();
+			String jsonstr;
+			fbjson.toString(jsonstr);
+			StaticJsonDocument <512> doc;
+			deserializeJson(doc, jsonstr);
+			const char** userTags = (const char**)malloc((doc.size() + 1) * sizeof(const char*));
+			if (userTags == NULL) {
+				return NULL;
+			}
+
+			int i = 0;
+			unsigned long long current_timestamp = ConvertToTimeStamp(GetEpochTime());
+
+			for (const auto& element : doc.as<JsonObject>()) {
+				const char* userTag = element.key().c_str();
+
+                fbjson.get(result, String(userTag) + "/date_valid");
+
+                unsigned long long date_valid_timestamp = (unsigned long long)result.doubleValue;
+				if (current_timestamp <= date_valid_timestamp) {
+					userTags[i] = strdup(userTag); // Use strdup to duplicate the string
+					Serial.println(userTags[i]);
+					i++;
+				}
+			}
+			userTags[i] = NULL;
+			sendDataPrev = millis();
+			return userTags;
+		}
+	}
+	return NULL;
+}
+
+void ClearEEPROM(){
+	size_t eepromAddr = 0;
+	EEPROM.begin(4096);
+    while (eepromAddr < EEPROM.length()) {
+		EEPROM.write(eepromAddr, 0);
+		eepromAddr++;
+	}
+	Serial.println("EEPROM Cleared");
+	EEPROM.end();
+}
+
+void FreeUserTags(const char** userTags) {
+    if (userTags == NULL) {
+        return; // Nothing to free
+    }
+
+    for (int i = 0; userTags[i] != NULL; ++i) {
+        free((void*)userTags[i]); // Free each duplicated string
+    }
+    free(userTags); // Free the array itself
+}
+
+struct User {
+    char tag[MAX_TAG_LEN];
+};
+
+// First check if the current EEPROM has similar users already
+// This helps reduce the write amounts to flash memory.
+boolean SaveUserInfoEEPROM() {
+    const char **userTags = GetAllUsersFireBase();
+    if (userTags == NULL) {
+        Serial.println("SaveUserInfoEEPROM() ERROR");
+        return false;
+    }
+
+    int eepromAddr = 0;
+    for (int i = 0; userTags[i] != NULL; ++i) {
+        User user;
+        strncpy(user.tag, userTags[i], MAX_TAG_LEN - 1); // Ensure null-termination
+        user.tag[MAX_TAG_LEN - 1] = '\0'; // Ensure null-termination
+        Serial.print(user.tag);
+        Serial.print(" Len: ");
+        Serial.print(strlen(user.tag));
+        Serial.print(" Size: ");
+        Serial.println(sizeof(user.tag));
+        EEPROM.put(eepromAddr, user);
+        eepromAddr += sizeof(User);
+    }
+
+    EEPROM.commit();
+    FreeUserTags(userTags);
+    return true;
+}
+
+void ReadUserInfoEEPROM() {
+    // EEPROM.begin(4096); // Make sure to adjust the size based on your needs
+    size_t eepromAddr = 0;
+
+    Serial.println("User Tags:");
+
+    while (eepromAddr < EEPROM.length()) {
+        User user;
+        EEPROM.get(eepromAddr, user);
+
+        // Check if the tag is empty (all zeros), indicating the end of stored data
+        if (user.tag[0] == '\0') {
+            break;
+        }
+
+        Serial.println(user.tag);
+
+        eepromAddr += sizeof(User);
+    }
+
+    // EEPROM.end();
+}
+
+static boolean GetUserInfoEEPROM(String tagUUID, authorized_user_t *user) {
+	Serial.println("Get user info EEPROM");
+	return true;
+}
+
+static boolean GetUserInfo(String tagUUID, authorized_user_t *user) {
+	if(!wifi_connected) {
+		return GetUserInfoEEPROM(tagUUID, user);
+	}
 	FirebaseJson fbjson;
 	FirebaseJsonData result;
 

@@ -1,5 +1,5 @@
 #include <Arduino.h>
-// #include "nfc.h"
+#include <EEPROM.h>
 #include "nfc_new.h"
 #include "FBServer.h"
 #include "SerialDebug.h"
@@ -7,6 +7,8 @@
 
 #define OPEN true
 #define CLOSED false
+
+#define EEPROM_SIZE 2048
 
 #define SOLENOID_OPEN_MS 			2500
 #define INDICATION_DURATION_MS 		1000
@@ -74,10 +76,6 @@ void SolenoidStateChange()
 	}
 }
 
-static void MagnetSensorStateChange(){
-
-}
-
 static inline void Beep(unsigned long duration) {
 	tone(BUZZER_PIN, 2000, duration);
 }
@@ -118,55 +116,69 @@ void CheckDoorState(){
 
 void setup()
 {
+	Serial.begin(9600);
+	if(!Serial) {
+		delay(100);
+	}
+	Serial.println("Hello!");
+
 	pinMode(INDICATE_SCAN_LED, OUTPUT);
 	pinMode(SOLENOID_LED_PIN, OUTPUT); // Solenoid activated LED
 	pinMode(MAGNET_SENSOR_PIN, INPUT_PULLUP); // Magnet sensor activated BUTTON
 	pinMode(BUZZER_PIN, OUTPUT); // Buzzer
 	pinMode(DOOR_OPEN_PIN, OUTPUT); // Door closed LED
 
-	// In FBServer.cpp change these for ConnectWifi()
-	// #define WIFI_SSID ""
-	// #define WIFI_PASSWORD ""
-	Serial.begin(9600);
-	if(!Serial) {
-		delay(100);
-	}
-	Serial.println("Hello!");
-	NfcBeginNew(&UUID); // Sometimes fails - Manually reconnect VCC wire for NFC reader.
-	
+	// NfcBeginNew(&UUID); 	// Sometimes fails - Manually reconnect VCC wire for NFC reader.
+	// ClearEEPROM(); 		// Dont use this 
+	EEPROM.begin(EEPROM_SIZE);
 	ConnectWifi(); 
 	ConnectFirebase();
 	ConfigTime();
 	attachInterrupt(MAGNET_SENSOR_PIN, ISRoutine, CHANGE);
+	// SaveUserInfoEEPROM();
 }
+
+// 	TODO: 	(EEPROM) When in setup():
+//			1) 	If wifi connected: Check all users in firebase
+//			   	Check EEPROM. Compare the users. 
+//				If same - Dont write to EEPROM
+//				Not same - Update EEPROM
+//			2)	If not connected: Cant compare - Do nothing. Hope some users already in EEPROM.
+
+//			When in LOOP:
+//			3) 	If wifi connected: Do step 1) after every other day.
+//			4) 	If not connected: Use EEPROM users to open door.
+
 
 void loop()
 {
 	// Only use NFC specific tasks when solenoid and door are closed
-	if (solenoid_state == CLOSED && door_state == CLOSED) { 
-		// Returns true if tag scanned, saves into UUID
-		NfcTaskNew(&UUID);
-		IndicateScan();
+	GetAllUsersFireBase();
+	delay(2000);
+	// if (solenoid_state == CLOSED && door_state == CLOSED) { 
+	// 	// Returns true if tag scanned, saves into UUID
+	// 	NfcTaskNew(&UUID);
+	// 	IndicateScan();
 
-		solenoid_cmd_nfc = FireBaseTask(&UUID);
+	// 	solenoid_cmd_nfc = FireBaseTask(&UUID);
 		
-		if(solenoid_cmd_nfc == CMD_OPEN || solenoid_cmd_web == CMD_KEEP_OPEN) {
-			Beep(150);
-			solenoid_last_poll = millis();
-			digitalWrite(SOLENOID_LED_PIN, HIGH); // Open solenoid
-		}
-	}
+	// 	if(solenoid_cmd_nfc == CMD_OPEN || solenoid_cmd_web == CMD_KEEP_OPEN) {
+	// 		Beep(150);
+	// 		solenoid_last_poll = millis();
+	// 		digitalWrite(SOLENOID_LED_PIN, HIGH); // Open solenoid
+	// 	}
+	// }
 
-	solenoid_cmd_web = FireBaseCheckDoor();
+	// solenoid_cmd_web = FireBaseCheckDoor();
 
-	NfcStatusCheck(&UUID);
+	// NfcStatusCheck(&UUID);
 
-	SolenoidStateChange(); 	// Checks if solenoid was opened
-	 						// If opened, keeps open for SOLENOID_OPEN_MS
-	 						// Else just keeps it closed
-	DeviceStatusesTask();
+	// SolenoidStateChange(); 	// Checks if solenoid was opened
+	//  						// If opened, keeps open for SOLENOID_OPEN_MS
+	//  						// Else just keeps it closed
+	// DeviceStatusesTask();
 
-	CheckDoorState();
+	// CheckDoorState();
 
 	UUID = "";
 }

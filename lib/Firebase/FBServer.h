@@ -24,6 +24,13 @@ void ConfigTime();
 struct tm Get_Epoch_Time();
 CMD_TYPE_E FireBaseTask(String *);
 CMD_TYPE_E FireBaseCheckDoor();
+
+const char** GetAllUsersFireBase();
+boolean SaveUserInfoEEPROM();
+void ReadUserInfoEEPROM();
+void FreeUserTags(const char** userTags);
+void ClearEEPROM();
+
 void DeviceStatusesTask();
 
 struct tm ConvertTimeStamp(unsigned long);
