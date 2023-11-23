@@ -18,18 +18,20 @@ typedef struct {
     unsigned long long date_valid;
 } authorized_user_t;
 
-void ConnectWifi();
+void ConnectWifi(const char*);
 void ConnectFirebase();
 void ConfigTime();
 struct tm Get_Epoch_Time();
 CMD_TYPE_E FireBaseTask(String *);
 CMD_TYPE_E FireBaseCheckDoor();
 
-const char** GetAllUsersFireBase();
+boolean GetAllUsersFireBase();
+boolean GetAllUsersEEPROM();
 boolean SaveUserInfoEEPROM();
-void ReadUserInfoEEPROM();
-void FreeUserTags(const char** userTags);
 void ClearEEPROM();
+
+void printUserTagsFirebase();
+void printUserTagsEEPROM();
 
 void DeviceStatusesTask();
 

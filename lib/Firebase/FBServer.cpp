@@ -13,7 +13,7 @@
 #include "addons/RTDBHelper.h"
 
 #define WIFI_SSID "TalTech" 	// Change into your own WiFi SSID
-#define WIFI_PASSWORD ""	// Change the password
+#define WIFI_PASSWORD "5"	// Change the password
 
 #define API_KEY "API_KEY"
 #define DATABASE_URL "nutikapp-default-rtdb.europe-west1.firebasedatabase.app"
@@ -26,9 +26,10 @@
 #define OPEN_DOOR '2'
 
 #define MAX_TAG_LEN 21
+#define MAX_USERS 100 // Max size of user tag is 21 bytes - Max EEPROM usage 2100 bytes
+
 
 FirebaseData fbdo;
-FirebaseJson fjson;
 
 FirebaseAuth auth;
 FirebaseConfig config;
@@ -36,11 +37,14 @@ FirebaseConfig config;
 uint32_t sendDataPrev = 0;
 uint32_t sendDataPrevWifi = 0;
 uint32_t sendDataPrevSolenoid = 0;
-uint32_t nextEntryNumber = 1;
 
-boolean wifi_connected;
+boolean wifi_connected = false;
 
-int count = 0;
+const char *userTagsFirebase[MAX_USERS] = {nullptr};
+const char *userTagsEEPROM[MAX_USERS] = {nullptr};
+size_t numUsersFireBase = 0;
+size_t numUsersEEPROM = 0;
+
 bool signupOK = false;
 
 static void PrintTime(struct tm timeinfo) // For debugging
@@ -217,10 +221,9 @@ static FirebaseJson SetStudentJSON()
 	return fbjson;
 }
 
-
 // Returns all users from FireBase that should have access
-const char** GetAllUsersFireBase() {
-	if(!wifi_connected) return NULL;
+boolean GetAllUsersFireBase() {
+	if(!wifi_connected) return false;
 
 	FirebaseJson fbjson;
 	QueryFilter filter;
@@ -232,15 +235,23 @@ const char** GetAllUsersFireBase() {
 		{
 			fbjson = fbdo.to<FirebaseJson>();
 			String jsonstr;
-			fbjson.toString(jsonstr);
-			StaticJsonDocument <512> doc;
-			deserializeJson(doc, jsonstr);
-			const char** userTags = (const char**)malloc((doc.size() + 1) * sizeof(const char*));
-			if (userTags == NULL) {
-				return NULL;
-			}
+			fbjson.toString(jsonstr,true);
+			size_t size = strlen(jsonstr.c_str());
+			// Serial.println(jsonstr);
+			// Serial.println(size);
+			// Serial.println(sizeof(jsonstr));
+			// return true;
+			// StaticJsonDocument <size> doc;
+			DynamicJsonDocument doc(size + 1);
+			DeserializationError error = deserializeJson(doc, jsonstr);
 
-			int i = 0;
+			if (error) {
+				Serial.print(F("JSON parsing failed: "));
+				Serial.println(error.c_str());
+				doc.clear();
+				return false;  
+			}
+            numUsersFireBase = 0;
 			unsigned long long current_timestamp = ConvertToTimeStamp(GetEpochTime());
 
 			for (const auto& element : doc.as<JsonObject>()) {
@@ -250,17 +261,32 @@ const char** GetAllUsersFireBase() {
 
                 unsigned long long date_valid_timestamp = (unsigned long long)result.doubleValue;
 				if (current_timestamp <= date_valid_timestamp) {
-					userTags[i] = strdup(userTag); // Use strdup to duplicate the string
-					Serial.println(userTags[i]);
-					i++;
+					userTagsFirebase[numUsersFireBase] = strdup(userTag); // Use strdup to duplicate the string
+					// Serial.println(userTagsFirebase[numUsers]);
+					numUsersFireBase++;
 				}
 			}
-			userTags[i] = NULL;
+			doc.clear();
+			userTagsFirebase[numUsersFireBase] = NULL;
 			sendDataPrev = millis();
-			return userTags;
+			return true;
 		}
 	}
-	return NULL;
+	return false;
+}
+
+void printUserTagsFirebase(){
+	Serial.println("FIREBASE:");
+	for (size_t i = 0; i < numUsersFireBase;  ++i){
+		Serial.println(userTagsFirebase[i]);
+	}
+}
+
+void printUserTagsEEPROM(){
+	Serial.println("EEPROM:");
+	for (size_t i = 0 ; i < numUsersEEPROM;  ++i){
+		Serial.println(userTagsEEPROM[i]);
+	}
 }
 
 void ClearEEPROM(){
@@ -274,56 +300,82 @@ void ClearEEPROM(){
 	EEPROM.end();
 }
 
-void FreeUserTags(const char** userTags) {
-    if (userTags == NULL) {
-        return; // Nothing to free
-    }
-
-    for (int i = 0; userTags[i] != NULL; ++i) {
-        free((void*)userTags[i]); // Free each duplicated string
-    }
-    free(userTags); // Free the array itself
-}
-
 struct User {
     char tag[MAX_TAG_LEN];
 };
 
+static boolean UsersUpToDateInEEPROM() {
+	// Serial.println("Num users EEPROM " + String(numUsersEEPROM) + " Num users Firebase " + String(numUsersFireBase));
+	if(!wifi_connected) {
+		return true;
+	}
+
+	if(numUsersEEPROM != numUsersFireBase) {
+		Serial.println("User count not the same");
+		
+		return false; // Different amount of users.
+	}
+	for (size_t i = 0; i < numUsersFireBase; i++) {	
+		if(strcmp(userTagsEEPROM[i], userTagsFirebase[i]) != 0) {
+			Serial.println("Users not the same");
+			return false;
+		}
+	}
+	return true;
+}
+boolean ReadEEPROM = true;
+
 // First check if the current EEPROM has similar users already
 // This helps reduce the write amounts to flash memory.
 boolean SaveUserInfoEEPROM() {
-    const char **userTags = GetAllUsersFireBase();
-    if (userTags == NULL) {
-        Serial.println("SaveUserInfoEEPROM() ERROR");
-        return false;
-    }
+	static uint32_t last_check = 0;
+	
+	// TODO: Change time to ~ 12-24 hr 
+	if((millis() - last_check > 300000) || last_check == 0) {
 
-    int eepromAddr = 0;
-    for (int i = 0; userTags[i] != NULL; ++i) {
-        User user;
-        strncpy(user.tag, userTags[i], MAX_TAG_LEN - 1); // Ensure null-termination
-        user.tag[MAX_TAG_LEN - 1] = '\0'; // Ensure null-termination
-        Serial.print(user.tag);
-        Serial.print(" Len: ");
-        Serial.print(strlen(user.tag));
-        Serial.print(" Size: ");
-        Serial.println(sizeof(user.tag));
-        EEPROM.put(eepromAddr, user);
-        eepromAddr += sizeof(User);
-    }
+		GetAllUsersFireBase();		// Rewrites userTagsFirebase
+		GetAllUsersEEPROM(); 		// Rewrites userTagsEEPROM
+		printUserTagsEEPROM();
+		printUserTagsFirebase();
 
-    EEPROM.commit();
-    FreeUserTags(userTags);
-    return true;
+		if (UsersUpToDateInEEPROM() == true) 
+		{
+			Serial.println("Users up to date");
+			last_check = millis();
+			return false;
+		}
+		Serial.println("WRITING EEPROM");
+		numUsersEEPROM = 0;
+		ReadEEPROM = true;
+		int eepromAddr = 0;
+		for (size_t i = 0; i < numUsersFireBase; ++i) {
+			User user;
+			strncpy(user.tag, userTagsFirebase[i], MAX_TAG_LEN - 1); // Ensure null-termination
+			user.tag[MAX_TAG_LEN - 1] = '\0'; // Ensure null-termination
+			userTagsEEPROM[numUsersEEPROM] = strdup(user.tag);
+			numUsersEEPROM = i;
+			Serial.println(user.tag);
+			EEPROM.put(eepromAddr, user);
+			eepromAddr += sizeof(User);
+		}
+
+		EEPROM.write(eepromAddr, '\0'); // Ends array of tags
+		EEPROM.commit();
+		last_check = millis();
+		return true;
+	}
+	return false;
 }
 
-void ReadUserInfoEEPROM() {
-    // EEPROM.begin(4096); // Make sure to adjust the size based on your needs
+boolean GetAllUsersEEPROM() {
+	if(userTagsEEPROM != nullptr && ReadEEPROM == false){
+		Serial.println("Value already assigned, wont read EEPROM");
+		return false;
+	}
     size_t eepromAddr = 0;
-
-    Serial.println("User Tags:");
-
-    while (eepromAddr < EEPROM.length()) {
+	numUsersEEPROM = 0;
+	Serial.println("READING EEPROM");
+    for (size_t i = 0; i < MAX_USERS; ++i) {
         User user;
         EEPROM.get(eepromAddr, user);
 
@@ -331,32 +383,40 @@ void ReadUserInfoEEPROM() {
         if (user.tag[0] == '\0') {
             break;
         }
-
-        Serial.println(user.tag);
-
+        userTagsEEPROM[numUsersEEPROM] = strdup(user.tag);
+        numUsersEEPROM++;
         eepromAddr += sizeof(User);
     }
-
-    // EEPROM.end();
+	userTagsEEPROM[numUsersEEPROM] = NULL;
+	ReadEEPROM = false;
+    return true;
 }
 
-static boolean GetUserInfoEEPROM(String tagUUID, authorized_user_t *user) {
-	Serial.println("Get user info EEPROM");
-	return true;
+static CMD_TYPE_E GetTagEEPROM(String UUID) {
+	Serial.println("Get tag EEPROM");
+	for (size_t i = 0; i < numUsersEEPROM; i++)
+	{
+		if(strcmp(UUID.c_str(), userTagsEEPROM[i]) == 0){
+			Serial.println("Found");
+			return CMD_OPEN;
+		}
+	}
+	Serial.println("Not found");
+	return CMD_DONT_OPEN;
 }
 
 static boolean GetUserInfo(String tagUUID, authorized_user_t *user) {
-	if(!wifi_connected) {
-		return GetUserInfoEEPROM(tagUUID, user);
-	}
-	FirebaseJson fbjson;
-	FirebaseJsonData result;
 
-	// Default values when card doesnt exist
 	user->UUID = tagUUID;
 	user->owner = "TBD";
 	user->type = "unknown";
 	user->action = "Attempted open";
+
+	FirebaseJson fbjson;
+	FirebaseJsonData result;
+
+	// Default values when card doesnt exist
+	
 
 	if (Firebase.RTDB.getJSON(&fbdo, "cards/" + tagUUID)) // Looks if cards contains a node that satisfies nodeName == tagUUID
 	{
@@ -479,9 +539,12 @@ static inline CMD_TYPE_E StudentTask(authorized_user_t *user)
 
 CMD_TYPE_E FireBaseTask(String *UUID)
 {
-	if (*UUID == "")
-	{
+	if (*UUID == "") {
 		return CMD_DONT_OPEN;
+	}
+
+	if(!wifi_connected) {
+		return GetTagEEPROM(*UUID); // Returns the CMD if is present in EEPROM
 	}
 
 	authorized_user_t user;
@@ -556,16 +619,14 @@ static void SendStatusNFC(boolean status){
 static void WiFiStatusTask(){
 	static uint32_t wifi_last_status_sent = 0;
 
-	if ((millis() - wifi_last_status_sent) > 300000) {	 	// Every 5 Minutes
-		SendStatusWiFi();								 	// Send status 
-
-		if(!WiFi.isConnected()) {							// Try to reconnect also
-			wifi_connected = false;
-			ConnectWifi();
+	if ((millis() - wifi_last_status_sent) > 60000) {	 	// Every 5 Minutes
+		Serial.println("Wifi status");
+		if(!wifi_connected) {								// Try to reconnect also
+			ConnectWifi("");
 			ConnectFirebase();
 		}
 		else{
-			wifi_connected = true;
+			SendStatusWiFi();								 	// Send status 
 		}
 		wifi_last_status_sent = millis();
 	}
@@ -589,26 +650,39 @@ void DeviceStatusesTask(){
 }
 
 
+#define WIFI_TIMEOUT 30000 // 30 seconds
 
-void ConnectWifi()
+void ConnectWifi(const char* pass)
 {
-	WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-	Serial.println("");
+	static int i = 0;
+	Serial.println(pass);
+	WiFi.begin(WIFI_SSID, pass);
 	Serial.println("Connecting to Wi-Fi");
-	while (WiFi.status() != WL_CONNECTED) // Add timeout
-	{
+
+	unsigned long startMillis = millis();
+
+	while (WiFi.status() != WL_CONNECTED && millis() - startMillis < WIFI_TIMEOUT) {
 		Serial.print(".");
 		delay(100);
 	}
-	wifi_connected = true;
-	Serial.println();
-	Serial.print("Connected with IP: ");
-	Serial.println(WiFi.localIP());
-	Serial.println();
+
+	if (WiFi.status() == WL_CONNECTED) {
+		wifi_connected = true;
+		Serial.println();
+		Serial.print("Connected with IP: ");
+		Serial.println(WiFi.localIP());
+		Serial.println();
+	} else {
+		Serial.println("\nWi-Fi connection failed. Timeout reached.");
+		wifi_connected = false;
+		// Handle the failure or retry if needed
+	}
+	i++;
 }
 
 void ConnectFirebase()
 {
+	if(!wifi_connected) return;
 	/* Assign the api key (required) */
 	config.api_key = API_KEY;
 
