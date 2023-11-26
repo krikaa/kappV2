@@ -1,7 +1,6 @@
 #pragma once
 #include <stdint.h>
 #include <Arduino.h>
-#include "nfc.h"
 
 typedef enum {
     CMD_OPEN,
@@ -20,24 +19,20 @@ typedef struct {
 
 void ConnectWifi(const char*);
 void ConnectFirebase();
-void ConfigTime();
-struct tm Get_Epoch_Time();
+
 CMD_TYPE_E FireBaseTask(String *);
-CMD_TYPE_E FireBaseCheckDoor();
+CMD_TYPE_E FireBaseCheckSolenoid();
+
+void FireBaseUpdateDoorState(boolean);
 
 boolean GetAllUsersFireBase();
 boolean GetAllUsersEEPROM();
 boolean SaveUserInfoEEPROM();
 void ClearEEPROM();
 
-void printUserTagsFirebase();
-void printUserTagsEEPROM();
+// void printUserTagsFirebase();
+// void printUserTagsEEPROM();
 
-void DeviceStatusesTask();
-
-struct tm ConvertTimeStamp(unsigned long);
-unsigned long long ConvertToTimeStamp(struct tm timeinfo);
-struct tm ConvertFromTimeStamp(unsigned long long tstamp);
-struct tm GetSemesterEnd();
+void SendDeviceStatuses();
 
 extern boolean wifi_connected;

@@ -39,7 +39,7 @@ void NfcBegin()
 
 boolean ReadNFC(String *UUID)
 {
-	if (nfc.tagPresent(UUID, 500)) // Read until present 10ms timeout
+	if (nfc.tagPresent(UUID, 300)) // Read until present 10ms timeout
 	{
 		// NfcTag nfcCard = nfc.read();
 		// tagUUID = nfcCard.getUidString();
@@ -58,8 +58,9 @@ boolean ReadNFC(String *UUID)
 boolean ReadNewCard(String *UUID)
 {
 	Serial.println("Reading new card");
-	for (int i = 0; i < 50; i++) // TODO: Change Hardcoded 50.
+	for (int i = 0; i < 5; i++) // TODO: Change Hardcoded 50.
 	{
+		Serial.println(i);
 		if (nfc.connected(0))
 		{
 			if (ReadNFC(UUID))

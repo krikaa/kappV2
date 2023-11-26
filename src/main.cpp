@@ -1,9 +1,12 @@
 #include <Arduino.h>
 #include <EEPROM.h>
+#include <Wire.h>
 #include "nfc_new.h"
 #include "FBServer.h"
+
+
+#define DEBUG
 #include "SerialDebug.h"
-#include <Wire.h>
 
 #define OPEN true
 #define CLOSED false
@@ -58,7 +61,7 @@ void SolenoidStateChange()
 			// Solenoid has just been opened
 			solenoid_last_poll = millis();
 			solenoid_state = OPEN;
-			Serial.println("Solenoid open");
+			DBGL("Solenoid open");
 		}
 
 		if (solenoid_state && (millis() - solenoid_last_poll >= SOLENOID_OPEN_MS) && solenoid_cmd_web != CMD_KEEP_OPEN)
@@ -66,7 +69,8 @@ void SolenoidStateChange()
 			// Solenoid has been open for more than SOLENOID_OPEN_MS
 			digitalWrite(SOLENOID_LED_PIN, LOW); // Indicate solenoid is closed
 			solenoid_state = CLOSED;
-			Serial.println("Solenoid closed");
+			Serial.println("Close door");
+			DBGL("Solenoid closed");
 		}
 	}
 	else
@@ -85,7 +89,6 @@ static void IndicateScan() {
 
 	if(!UUID.isEmpty()){
 		// digitalWrite(INDICATE_SCAN_LED, HIGH);
-		Serial.println("Isnt empty");
 		Beep(150);
 		indicationStartTime = millis(); // Record the start time
 	}
@@ -95,7 +98,7 @@ static void IndicateScan() {
     }
 }
 
-void CheckDoorState(){
+void CheckDoorState() {
 	static uint32_t last_door_check = 0;
 
 	if((millis() - last_door_check) > 2000){
@@ -108,12 +111,21 @@ void CheckDoorState(){
 			digitalWrite(DOOR_OPEN_PIN, LOW);
 		}
 		// Serial.print("Solenoid: ");
-		// solenoid_state == CLOSED ? Serial.println("Closed") : Serial.println("Open");
+		// solenoid_state == CLOSED ? DBGL("Closed") : DBGL("Open");
 		// Serial.print("Door: ");
-		// door_state == CLOSED ? Serial.println("Closed") : Serial.println("Open");
+		// door_state == CLOSED ? DBGL("Closed") : DBGL("Open");
 		last_door_check = millis();
 	}
 }
+
+static void initPins(){
+	pinMode(INDICATE_SCAN_LED, OUTPUT);
+	pinMode(SOLENOID_LED_PIN, OUTPUT); // Solenoid activated LED
+	pinMode(MAGNET_SENSOR_PIN, INPUT_PULLUP); // Magnet sensor activated BUTTON
+	pinMode(BUZZER_PIN, OUTPUT); // Buzzer
+	pinMode(DOOR_OPEN_PIN, OUTPUT); // Door closed LED
+}
+
 // TODO: Move 
 void setup()
 {
@@ -121,13 +133,9 @@ void setup()
 	if(!Serial) {
 		delay(100);
 	}
-	Serial.println("Hello!");
+	DBGL("Hello!");
 
-	pinMode(INDICATE_SCAN_LED, OUTPUT);
-	pinMode(SOLENOID_LED_PIN, OUTPUT); // Solenoid activated LED
-	pinMode(MAGNET_SENSOR_PIN, INPUT_PULLUP); // Magnet sensor activated BUTTON
-	pinMode(BUZZER_PIN, OUTPUT); // Buzzer
-	pinMode(DOOR_OPEN_PIN, OUTPUT); // Door closed LED
+	initPins();
 
 	ConnectWifi(""); 
 	ConnectFirebase();
@@ -135,7 +143,6 @@ void setup()
 	// ClearEEPROM(); 		// Dont use this often 
 	EEPROM.begin(EEPROM_SIZE);
 	
-	ConfigTime();
 	SaveUserInfoEEPROM();
 	NfcBeginNew(&UUID); 	// Sometimes fails - Manually reconnect VCC wire for NFC reader.
 	attachInterrupt(MAGNET_SENSOR_PIN, ISRoutine, CHANGE);
@@ -157,13 +164,13 @@ void loop()
 
 	// Only use NFC specific tasks when solenoid and door are closed
 	if (solenoid_state == CLOSED && door_state == CLOSED) { 
-		// Returns true if tag scanned, saves into UUID
 		NfcTaskNew(&UUID);
 		IndicateScan();
 
 		solenoid_cmd_nfc = FireBaseTask(&UUID);
 		
 		if(solenoid_cmd_nfc == CMD_OPEN || solenoid_cmd_web == CMD_KEEP_OPEN) {
+			Serial.println("Open door");
 			delay(200);
 			Beep(150);
 			solenoid_last_poll = millis();
@@ -171,14 +178,15 @@ void loop()
 		}
 	}
 
-	solenoid_cmd_web = FireBaseCheckDoor();
+	solenoid_cmd_web = FireBaseCheckSolenoid();
 
-	NfcStatusCheck(&UUID);
+	FireBaseUpdateDoorState(door_state);
 
-	SolenoidStateChange(); 	// Checks if solenoid was opened
-	 						// If opened, keeps open for SOLENOID_OPEN_MS
-	 						// Else just keeps it closed
-	DeviceStatusesTask();
+	NfcConnCheck(&UUID);
+
+	SolenoidStateChange(); 	
+	
+	SendDeviceStatuses();
 
 	CheckDoorState();
 

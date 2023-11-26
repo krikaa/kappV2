@@ -4,6 +4,9 @@
 
 void NfcBeginNew(String *);
 void NfcTaskNew(String *);
-void NfcStatusCheck(String *);
+void NfcConnCheck(String *);
+void handleCardDetected(String *);
+boolean ReadNFC(String *);
+boolean ReadNewCard(String *);
 
 extern boolean nfc_connected_new;

@@ -3,9 +3,12 @@
 #include <Firebase_ESP_Client.h>
 #include <ArduinoJson.h>
 #include "FBServer.h"
-#include "time.h"
+#include "timeutils.h"
 #include "nfc_new.h"
 #include <EEPROM.h>
+
+#define DEBUG
+#include "SerialDebug.h"
 
 // Provide the token generation process info.
 #include "addons/TokenHelper.h"
@@ -18,27 +21,29 @@
 #define API_KEY "API_KEY"
 #define DATABASE_URL "nutikapp-default-rtdb.europe-west1.firebasedatabase.app"
 
-#define NTP_SERVER "pool.ntp.org"
-#define TIMEZONE_OFFSET 7200 // GMT+2 (2 hours in seconds)
-#define DAY_LIGHT_SAVINGS 0	 // 1 Hour Estonia DST (Day Light Savings)
-
 #define ADD_STUDENT '1'
 #define OPEN_DOOR '2'
 
 #define MAX_TAG_LEN 21
 #define MAX_USERS 100 // Max size of user tag is 21 bytes - Max EEPROM usage 2100 bytes
 
+#define WIFI_TIMEOUT 30000 // 30 seconds
 
-FirebaseData fbdo;
+struct User {
+    char tag[MAX_TAG_LEN];
+};
 
 FirebaseAuth auth;
 FirebaseConfig config;
+FirebaseData fbdo;
 
 uint32_t sendDataPrev = 0;
 uint32_t sendDataPrevWifi = 0;
 uint32_t sendDataPrevSolenoid = 0;
+uint32_t sendDataPrevDoor = 0;
 
 boolean wifi_connected = false;
+boolean ReadEEPROM = true;
 
 const char *userTagsFirebase[MAX_USERS] = {nullptr};
 const char *userTagsEEPROM[MAX_USERS] = {nullptr};
@@ -47,148 +52,6 @@ size_t numUsersEEPROM = 0;
 
 bool signupOK = false;
 
-static void PrintTime(struct tm timeinfo) // For debugging
-{
-	int year = timeinfo.tm_year + 1900;
-	int month = timeinfo.tm_mon + 1; // Month is 0-based, so add 1 to get the real month (1-12)
-	int day = timeinfo.tm_mday;		 // Day of the month
-	int hour = timeinfo.tm_hour;
-	int minute = timeinfo.tm_min;
-	Serial.print(day);
-	Serial.print("/");
-	Serial.print(month);
-	Serial.print("/");
-	Serial.print(year);
-	Serial.print(" ");
-	Serial.print(hour);
-	Serial.print(":");
-	Serial.print(minute);
-	Serial.println(" ");
-}
-
-static void PrintUser(authorized_user_t user) // For debugging
-{
-	Serial.print("UUID: ");
-	Serial.println(user.UUID);
-	Serial.print("Added:");
-	PrintTime(ConvertFromTimeStamp(user.date_added));
-	Serial.print("Owner: ");
-	Serial.println(user.owner);
-	Serial.print("Type: ");
-	Serial.println(user.type);
-}
-
-struct tm GetEpochTime() // Querys current time from NTP server
-{
-	time_t now;
-	struct tm timeinfo;
-	if (!getLocalTime(&timeinfo))
-	{
-		Serial.println("Failed to obtain time");
-		return timeinfo;
-	}
-	time(&now);
-	return timeinfo;
-}
-
-struct tm ConvertFromTimeStamp(unsigned long long tstamp) // Converts timestamp E.g: 169593923 into struct tm
-{
-	time_t now = static_cast<time_t>(tstamp);
-	struct tm timeinfo;
-
-	if (!getLocalTime(&timeinfo))
-	{
-		Serial.println("Failed to obtain time");
-		return timeinfo; // TODO: return some error when fails.
-	}
-	time(&now);
-	// PrintTime(timeinfo);
-	return timeinfo;
-}
-
-unsigned long long ConvertToTimeStamp(struct tm timeinfo) // Converts struct tm into timestamp 169593923 
-{
-	time_t timestamp = mktime(&timeinfo);
-
-	if (timestamp != -1)
-	{
-		return static_cast<unsigned long long>(timestamp) * 1000; // * 1000 for timestamp in ms format
-	}
-	else
-	{
-		// Handle the error case, e.g., by returning an error code
-		Serial.println("ERROR: Convert to time stamp failed");
-		return 0;
-	}
-}
-
-void ConfigTime()
-{
-	configTime(TIMEZONE_OFFSET, DAY_LIGHT_SAVINGS, NTP_SERVER);
-}
-
-// Sygis semester: ~ 04.09 - 21.01 | kuud: 7, 8, 9, 10, 11, 12, 1
-// Kevad semester: ~ 29.01 - 12.6  | kuud: 1, 2, 3, 4, 5, 6
-
-struct tm GetSemesterEnd() // Returns struct tm of semester end
-{ 
-
-	struct tm current_time = GetEpochTime();
-
-	// UNCOMMENT TO DEBUG/TEST THIS FUNCTION (REMOVE AFTER RELEASE)
-
-	// int month, day;
-	// Serial.println("Enter Month (0-11): ");
-	// while (!Serial.available()) {} // Wait for input
-	// month = Serial.parseInt();
-	// Serial.println(month); // Print the entered month
-
-	// Serial.println("Enter Day (1-31): ");
-	// while (!Serial.available()) {} // Wait for input
-	// day = Serial.parseInt();
-	// Serial.println(day); // Print the entered day
-
-	// current_time.tm_mon = month;
-	// current_time.tm_mday = day;
-
-	current_time.tm_hour = 23;
-	current_time.tm_min = 59;
-	current_time.tm_sec = 0;
-
-	if (current_time.tm_mon > 5 && current_time.tm_mon <= 11)
-	{
-		// Sygissemester voi suve kuu
-		current_time.tm_mday = 21;
-		current_time.tm_mon = 0; // Sygisel lopp
-		current_time.tm_year += 1;
-		// return 0;
-	}
-	else if (current_time.tm_mon >= 0 && current_time.tm_mon <= 5)
-	{
-		// Kevadsemester
-		if ((current_time.tm_mon == 5 && current_time.tm_mday >= 12) || // Juuni 12 - ...
-			(current_time.tm_mon == 0 && current_time.tm_mday < 21))
-		{ // Jaanuar 1-20 -> sygissemester
-
-			if (current_time.tm_mon == 5)
-			{
-				current_time.tm_year += 1;
-			}
-			current_time.tm_mday = 21;
-			current_time.tm_mon = 0; // Sygisel lopp
-		}
-		else
-		{
-			current_time.tm_mday = 12;
-			current_time.tm_mon = 5; // Kevadel lopp
-		}
-	}
-	PrintTime(current_time);
-	Serial.print("TSTAMP: ");
-	Serial.println(ConvertToTimeStamp(current_time));
-	return current_time;
-}
-
 static inline boolean IsFireBaseReady(uint32_t sendDataPrev)
 {
 	if (Firebase.ready() && signupOK && (millis() - sendDataPrev > 200 || sendDataPrev == 0))
@@ -196,6 +59,18 @@ static inline boolean IsFireBaseReady(uint32_t sendDataPrev)
 		return true;
 	}
 	return false;
+}
+
+static void PrintUser(authorized_user_t user) // For debugging
+{
+	DBG("UUID: ");
+	DBGL(user.UUID);
+	DBG("Added:");
+	PrintTime(ConvertFromTimeStamp(user.date_added));
+	DBG("Owner: ");
+	DBGL(user.owner);
+	DBG("Type: ");
+	DBGL(user.type);
 }
 
 static FirebaseJson SetLogEntryJSON(String tagUUID, String name, String type, String action) // Returns json of log entry
@@ -224,7 +99,6 @@ static FirebaseJson SetStudentJSON()
 // Returns all users from FireBase that should have access
 boolean GetAllUsersFireBase() {
 	if(!wifi_connected) return false;
-
 	FirebaseJson fbjson;
 	QueryFilter filter;
 	FirebaseJsonData result;
@@ -237,17 +111,16 @@ boolean GetAllUsersFireBase() {
 			String jsonstr;
 			fbjson.toString(jsonstr,true);
 			size_t size = strlen(jsonstr.c_str());
-			// Serial.println(jsonstr);
-			// Serial.println(size);
-			// Serial.println(sizeof(jsonstr));
+			// DBGL(size);
+			// DBGL(sizeof(jsonstr));
 			// return true;
 			// StaticJsonDocument <size> doc;
 			DynamicJsonDocument doc(size + 1);
 			DeserializationError error = deserializeJson(doc, jsonstr);
 
 			if (error) {
-				Serial.print(F("JSON parsing failed: "));
-				Serial.println(error.c_str());
+				DBG(F("JSON parsing failed: "));
+				DBGL(error.c_str());
 				doc.clear();
 				return false;  
 			}
@@ -256,13 +129,15 @@ boolean GetAllUsersFireBase() {
 
 			for (const auto& element : doc.as<JsonObject>()) {
 				const char* userTag = element.key().c_str();
-
                 fbjson.get(result, String(userTag) + "/date_valid");
 
                 unsigned long long date_valid_timestamp = (unsigned long long)result.doubleValue;
+				// DBG(userTag);
+				// DBG(" ");
+				// DBGL(date_valid_timestamp);
 				if (current_timestamp <= date_valid_timestamp) {
 					userTagsFirebase[numUsersFireBase] = strdup(userTag); // Use strdup to duplicate the string
-					// Serial.println(userTagsFirebase[numUsers]);
+					// DBGL(userTagsFirebase[numUsers]);
 					numUsersFireBase++;
 				}
 			}
@@ -276,16 +151,16 @@ boolean GetAllUsersFireBase() {
 }
 
 void printUserTagsFirebase(){
-	Serial.println("FIREBASE:");
+	DBGL("FIREBASE:");
 	for (size_t i = 0; i < numUsersFireBase;  ++i){
-		Serial.println(userTagsFirebase[i]);
+		DBGL(userTagsFirebase[i]);
 	}
 }
 
 void printUserTagsEEPROM(){
-	Serial.println("EEPROM:");
+	DBGL("EEPROM:");
 	for (size_t i = 0 ; i < numUsersEEPROM;  ++i){
-		Serial.println(userTagsEEPROM[i]);
+		DBGL(userTagsEEPROM[i]);
 	}
 }
 
@@ -296,34 +171,30 @@ void ClearEEPROM(){
 		EEPROM.write(eepromAddr, 0);
 		eepromAddr++;
 	}
-	Serial.println("EEPROM Cleared");
+	DBGL("EEPROM Cleared");
 	EEPROM.end();
 }
 
-struct User {
-    char tag[MAX_TAG_LEN];
-};
-
 static boolean UsersUpToDateInEEPROM() {
-	// Serial.println("Num users EEPROM " + String(numUsersEEPROM) + " Num users Firebase " + String(numUsersFireBase));
+	// DBGL("Num users EEPROM " + String(numUsersEEPROM) + " Num users Firebase " + String(numUsersFireBase));
 	if(!wifi_connected) {
 		return true;
 	}
 
 	if(numUsersEEPROM != numUsersFireBase) {
-		Serial.println("User count not the same");
+		DBGL("User count not the same");
 		
 		return false; // Different amount of users.
 	}
 	for (size_t i = 0; i < numUsersFireBase; i++) {	
 		if(strcmp(userTagsEEPROM[i], userTagsFirebase[i]) != 0) {
-			Serial.println("Users not the same");
+			DBGL("Users not the same");
 			return false;
 		}
 	}
 	return true;
 }
-boolean ReadEEPROM = true;
+
 
 // First check if the current EEPROM has similar users already
 // This helps reduce the write amounts to flash memory.
@@ -340,11 +211,11 @@ boolean SaveUserInfoEEPROM() {
 
 		if (UsersUpToDateInEEPROM() == true) 
 		{
-			Serial.println("Users up to date");
+			DBGL("Users up to date");
 			last_check = millis();
 			return false;
 		}
-		Serial.println("WRITING EEPROM");
+		DBGL("WRITING EEPROM");
 		numUsersEEPROM = 0;
 		ReadEEPROM = true;
 		int eepromAddr = 0;
@@ -354,7 +225,7 @@ boolean SaveUserInfoEEPROM() {
 			user.tag[MAX_TAG_LEN - 1] = '\0'; // Ensure null-termination
 			userTagsEEPROM[numUsersEEPROM] = strdup(user.tag);
 			numUsersEEPROM = i;
-			Serial.println(user.tag);
+			DBGL(user.tag);
 			EEPROM.put(eepromAddr, user);
 			eepromAddr += sizeof(User);
 		}
@@ -369,12 +240,12 @@ boolean SaveUserInfoEEPROM() {
 
 boolean GetAllUsersEEPROM() {
 	if(userTagsEEPROM != nullptr && ReadEEPROM == false){
-		Serial.println("Value already assigned, wont read EEPROM");
+		DBGL("Value already assigned, wont read EEPROM");
 		return false;
 	}
     size_t eepromAddr = 0;
 	numUsersEEPROM = 0;
-	Serial.println("READING EEPROM");
+	DBGL("READING EEPROM");
     for (size_t i = 0; i < MAX_USERS; ++i) {
         User user;
         EEPROM.get(eepromAddr, user);
@@ -393,15 +264,15 @@ boolean GetAllUsersEEPROM() {
 }
 
 static CMD_TYPE_E GetTagEEPROM(String UUID) {
-	Serial.println("Get tag EEPROM");
+	DBGL("Get tag EEPROM");
 	for (size_t i = 0; i < numUsersEEPROM; i++)
 	{
 		if(strcmp(UUID.c_str(), userTagsEEPROM[i]) == 0){
-			Serial.println("Found");
+			DBGL("Found");
 			return CMD_OPEN;
 		}
 	}
-	Serial.println("Not found");
+	DBGL("Not found");
 	return CMD_DONT_OPEN;
 }
 
@@ -441,14 +312,14 @@ static boolean GetUserInfo(String tagUUID, authorized_user_t *user) {
 		user->date_valid = date_valid_timestamp;
 
 		if(current_timestamp > date_valid_timestamp) {
-			Serial.println("The user's card has expired");
+			DBGL("The user's card has expired");
 			user->action = "Attempted open";
 			return false;
 		}
 
 		return true;
 	}
-	Serial.println("User not found");
+	DBGL("User not found");
 	return false;
 }
 
@@ -460,42 +331,44 @@ static CMD_TYPE_E AddToLog(authorized_user_t *user)
 	{
 		if (Firebase.RTDB.setTimestamp(&fbdo, fbdo.dataPath() + "/" + fbdo.pushName() + "/timestamp"))
 		{
-			Serial.println("Log added");
+			DBGL("Log added");
 			return CMD_OPEN;
 		}
 	}
 	else
 	{
-		Serial.println("ERROR: Log not added");
+		DBGL("ERROR: Log not added");
 	}
 	return CMD_DONT_OPEN;
 }
 
 static CMD_TYPE_E AddStudentRights(String tagUUID) // Reads new card and saves into cards/
-{
-	if (!ReadNewCard(&tagUUID)) // Changes value of tagUUID
+{	
+	String studentTag;
+	if (!ReadNewCard(&studentTag)) // Changes value of tagUUID
 	{
-		Serial.println("Failed to read new card");
+		DBGL("Failed to read new card");
 		return CMD_DONT_OPEN;
 	}
 	FirebaseJson fbjson = SetStudentJSON();
-	if (Firebase.RTDB.setJSON(&fbdo, "cards/" + tagUUID, &fbjson)) // Adds new scanned card
+	if (Firebase.RTDB.setJSON(&fbdo, "cards/" + studentTag, &fbjson)) // Adds new scanned card
 	{
-		if (Firebase.RTDB.setTimestamp(&fbdo, "cards/" + tagUUID + "/date_added"))
+		if (Firebase.RTDB.setTimestamp(&fbdo, "cards/" + studentTag + "/date_added"))
 		{
-			Serial.println("Student added");
+			DBGL("Student added");
 			return CMD_OPEN;
 		}
 	}
-	Serial.println("ERROR: Student not added");
+	DBGL("ERROR: Student not added");
 	return CMD_DONT_OPEN;
 }
 
 // Temporary function until screen is used
 static char AskForInput() 
 { 
-	Serial.println("1 - Add student");
-	Serial.println("2 - Open door");
+	Serial.println("Admin view");
+	DBGL("1 - Add student");
+	DBGL("2 - Open door");
 	long timeout = millis();
 	char inByte = '0';
 	do
@@ -526,7 +399,7 @@ static CMD_TYPE_E TeacherTask(authorized_user_t *user)
 		break;
 
 	default:
-		Serial.println("Wrong input");
+		DBGL("Wrong input");
 		break;
 	}
 	return CMD_DONT_OPEN;
@@ -568,7 +441,7 @@ CMD_TYPE_E FireBaseTask(String *UUID)
 		}
 		else
 		{
-			Serial.println("Scanned UUID does not have access");
+			DBGL("Scanned UUID does not have access");
 			return CMD_DONT_OPEN;
 		}
 		sendDataPrev = millis();
@@ -578,15 +451,15 @@ CMD_TYPE_E FireBaseTask(String *UUID)
 
 // Checks every 5 seconds, 
 // Opens door if "Ava kapp" pressed on webpage.
-CMD_TYPE_E FireBaseCheckDoor() {
-	static uint32_t door_last_checked = 0;
+CMD_TYPE_E FireBaseCheckSolenoid() {
+	static uint32_t solenoid_last_checked = 0;
 	static boolean solenoid_state = false;
 
-	if(millis() - door_last_checked > 5000) {
+	if(millis() - solenoid_last_checked > 5000) {
 		if (IsFireBaseReady(sendDataPrevSolenoid)) {
 			if(Firebase.RTDB.getBool(&fbdo,"lockers/locker1/solenoid-activated")){
 				solenoid_state = fbdo.to<bool>();
-				door_last_checked = millis();
+				solenoid_last_checked = millis();
 			}
 			sendDataPrevSolenoid = millis();
 		}
@@ -600,27 +473,18 @@ CMD_TYPE_E FireBaseCheckDoor() {
 static void SendStatusWiFi(){
 	if(IsFireBaseReady(sendDataPrevWifi)){
 		if(Firebase.RTDB.setTimestamp(&fbdo, "lockers/locker1/wifi-last-connected")){
-			Serial.println("\nWifi status sent");
+			DBGL("\nWifi status sent");
 		}
 		sendDataPrevWifi = millis();
 	}
 }
 
-static void SendStatusNFC(boolean status){
-	if(IsFireBaseReady(sendDataPrev)){
-		if(Firebase.RTDB.setBool(&fbdo, "lockers/locker1/nfc-connected", status)){
-			Serial.print("NFC status sent: ");
-			status == false ? Serial.println("NOT CONNECTED") : Serial.println("CONNECTED");
-		}
-		sendDataPrev = millis();
-	}
-}
 
-static void WiFiStatusTask(){
+static void SendWiFiStatus(){
 	static uint32_t wifi_last_status_sent = 0;
 
 	if ((millis() - wifi_last_status_sent) > 60000) {	 	// Every 5 Minutes
-		Serial.println("Wifi status");
+		DBGL("Wifi status");
 		if(!wifi_connected) {								// Try to reconnect also
 			ConnectWifi("");
 			ConnectFirebase();
@@ -632,48 +496,71 @@ static void WiFiStatusTask(){
 	}
 }
 
-void NFCStatusTask(){
-	static uint32_t nfc_last_status_sent = 0;
-	static boolean nfc_last_sent_status = false;
+static void SendNFCStatus(){
+	static uint32_t last_time_sent = 0;
+	static boolean last_nfc_conn_state = false;
 
 
-	if (((millis() - nfc_last_status_sent) > 1000) && nfc_last_sent_status != nfc_connected_new){
-		SendStatusNFC(nfc_connected_new);
-		nfc_last_status_sent = millis();
-		nfc_last_sent_status = nfc_connected_new;
+	if (((millis() - last_time_sent) > 1000) && last_nfc_conn_state != nfc_connected_new){
+		if(IsFireBaseReady(sendDataPrev)){
+			if(Firebase.RTDB.setBool(&fbdo, "lockers/locker1/nfc-connected", nfc_connected_new)){
+				DBG("NFC status sent: ");
+				nfc_connected_new == false ? DBGL("NOT CONNECTED") : DBGL("CONNECTED");
+			}
+			sendDataPrev = millis();
+		}
+		last_time_sent = millis();
+		last_nfc_conn_state = nfc_connected_new;
 	}
 }
 
-void DeviceStatusesTask(){
-	WiFiStatusTask();
-	NFCStatusTask();
+void FireBaseUpdateDoorState(boolean door_state) {
+	static uint32_t last_time_sent = 0;
+	static boolean last_door_state = false;
+
+	if (((millis() - last_time_sent) > 1000) && last_door_state != door_state){
+		if(IsFireBaseReady(sendDataPrevDoor)){
+			if(Firebase.RTDB.setBool(&fbdo, "lockers/locker1/door-open", door_state)){
+				DBG("Door state sent: ");
+				door_state == false ? DBGL("Closed") : DBGL("Open");
+			}
+			sendDataPrevDoor = millis();
+		}
+		last_time_sent = millis();
+		last_door_state = door_state;
+	}
+}
+
+void SendDeviceStatuses(){
+	SendWiFiStatus();
+	SendNFCStatus();
 }
 
 
-#define WIFI_TIMEOUT 30000 // 30 seconds
 
 void ConnectWifi(const char* pass)
 {
 	static int i = 0;
-	Serial.println(pass);
+	DBGL(pass);
 	WiFi.begin(WIFI_SSID, pass);
-	Serial.println("Connecting to Wi-Fi");
+	DBGL("Connecting to Wi-Fi");
 
 	unsigned long startMillis = millis();
 
 	while (WiFi.status() != WL_CONNECTED && millis() - startMillis < WIFI_TIMEOUT) {
-		Serial.print(".");
+		DBG(".");
 		delay(100);
 	}
 
 	if (WiFi.status() == WL_CONNECTED) {
+		ConfigTime();
 		wifi_connected = true;
-		Serial.println();
-		Serial.print("Connected with IP: ");
-		Serial.println(WiFi.localIP());
-		Serial.println();
+		DBGL();
+		DBG("Connected with IP: ");
+		DBGL(WiFi.localIP());
+		DBGL();
 	} else {
-		Serial.println("\nWi-Fi connection failed. Timeout reached.");
+		DBGL("\nWi-Fi connection failed. Timeout reached.");
 		wifi_connected = false;
 		// Handle the failure or retry if needed
 	}
@@ -689,18 +576,19 @@ void ConnectFirebase()
 	/* Assign the RTDB URL (required) */
 	config.database_url = DATABASE_URL;
 
-	/* Sign up */
 
 	auth.user.email = "FIREBASE_EMAIL";
 	auth.user.password = "FIREBASE_PASSWORD";
+	
+	/* Sign up */
 	// if (Firebase.signUp(&config, &auth, "", ""))
 	// {
-	// 	Serial.println("Signup OK");
+	// 	DBGL("Signup OK");
 	// 	signupOK = true;
 	// }
 	// else
 	// {
-	// 	Serial.printf("%s\n", config.signer.signupError.message.c_str());
+	// 	DBGf("%s\n", config.signer.signupError.message.c_str());
 	// }
 
 	signupOK = true;
@@ -712,14 +600,14 @@ void ConnectFirebase()
 	Firebase.reconnectWiFi(true);
 
 	// if(Firebase.authenticated()){
-	// 	Serial.println("Authenticated");
+	// 	DBGL("Authenticated");
 	// } 
 	// else {
-	// 	Serial.println("Not authenticated");
+	// 	DBGL("Not authenticated");
 	// }
 
 	// if (Firebase.isTokenExpired()){
 	// 	Firebase.refreshToken(&config);
-	// 	Serial.println("Refresh token");
+	// 	DBGL("Refresh token");
 	// }
 }
