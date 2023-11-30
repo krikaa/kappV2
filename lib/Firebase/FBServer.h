@@ -6,6 +6,7 @@ typedef enum {
     CMD_OPEN,
     CMD_DONT_OPEN,
     CMD_KEEP_OPEN,
+    CMD_NO_OP,
 } CMD_TYPE_E;
 
 typedef struct {

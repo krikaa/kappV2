@@ -3,11 +3,11 @@
 #include <Adafruit_PN532.h>
 #include "nfc_new.h"
 
-#define DEBUG
+// #define DEBUG
 #include "SerialDebug.h"
 
-#define PN532_IRQ (14)
-#define PN532_RESET (13) // Not connected by default on the NFC Shield
+#define PN532_IRQ (12)
+#define PN532_RESET (D3) // Not connected by default on the NFC Shield
 
 boolean nfc_connected_new = false;
 
@@ -78,7 +78,7 @@ boolean ReadNFC(String *UUID)
 boolean ReadNewCard(String *UUID)
 {
 	Serial.println("Reading new card");
-	for (int i = 0; i < 10; i++) // TODO: Change Hardcoded 50.
+	for (int i = 0; i < 30; i++) // TODO: Change Hardcoded 50.
 	{
 		Serial.println(i);
 		if (nfc_connected_new)

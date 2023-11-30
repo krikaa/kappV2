@@ -7,7 +7,7 @@
 #include "nfc_new.h"
 #include <EEPROM.h>
 
-#define DEBUG
+// #define DEBUG
 #include "SerialDebug.h"
 
 // Provide the token generation process info.
@@ -21,8 +21,9 @@
 #define API_KEY "API_KEY"
 #define DATABASE_URL "nutikapp-default-rtdb.europe-west1.firebasedatabase.app"
 
-#define ADD_STUDENT '1'
-#define OPEN_DOOR '2'
+#define ADD_STUDENT 'a'
+#define OPEN_DOOR 's'
+#define CANCEL 'c'
 
 #define MAX_TAG_LEN 21
 #define MAX_USERS 100 // Max size of user tag is 21 bytes - Max EEPROM usage 2100 bytes
@@ -348,35 +349,44 @@ static CMD_TYPE_E AddStudentRights(String tagUUID) // Reads new card and saves i
 	if (!ReadNewCard(&studentTag)) // Changes value of tagUUID
 	{
 		DBGL("Failed to read new card");
-		return CMD_DONT_OPEN;
+		Serial.println("Adding unsuccessful");
+		SWSerial.write('e');
+		return CMD_NO_OP;
 	}
 	FirebaseJson fbjson = SetStudentJSON();
 	if (Firebase.RTDB.setJSON(&fbdo, "cards/" + studentTag, &fbjson)) // Adds new scanned card
 	{
 		if (Firebase.RTDB.setTimestamp(&fbdo, "cards/" + studentTag + "/date_added"))
 		{
+			SWSerial.write('l');
+			Serial.println("Adding successful");
+			delay(2000);
 			DBGL("Student added");
-			return CMD_OPEN;
+			return CMD_NO_OP;
 		}
 	}
 	DBGL("ERROR: Student not added");
-	return CMD_DONT_OPEN;
+	Serial.println("Adding unsuccessful");
+	SWSerial.write('e');
+	return CMD_NO_OP;
 }
 
 // Temporary function until screen is used
 static char AskForInput() 
 { 
-	Serial.println("Admin view");
+	SWSerial.write('a');
 	DBGL("1 - Add student");
 	DBGL("2 - Open door");
 	long timeout = millis();
 	char inByte = '0';
+
 	do
 	{
-		if (Serial.available())
+		if (SWSerial.available())
 		{
-			inByte = Serial.read();
-			if (inByte == ADD_STUDENT || inByte == OPEN_DOOR) {
+			inByte = SWSerial.read();
+			Serial.println("Got: " + String(inByte));
+			if (inByte == ADD_STUDENT || inByte == OPEN_DOOR || inByte == CANCEL) {
 				return inByte;
 			}
 		}
