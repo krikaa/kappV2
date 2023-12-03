@@ -32,6 +32,15 @@
   #include <Fonts/Custom/Satoshi_Regular20pt7b.h>     // CF_Y32
   #include <Fonts/Custom/Satoshi_Regular24pt7b.h>     // CF_Y32
 
+  #include <Fonts/Custom/Orbitron_Bold_20.h>
+  #include <Fonts/Custom/Orbitron_Bold_24.h>
+  #include <Fonts/Custom/Orbitron_Bold_32.h>
+  #include <Fonts/Custom/Orbitron_Medium_20.h>
+  #include <Fonts/Custom/Orbitron_Medium_24.h>
+  #include <Fonts/Custom/Orbitron_Medium_32.h>
+  #include <Fonts/Custom/Blox232pt7b.h>
+
+  #include <Fonts/Custom/origa___24pt7b.h>
 
 #endif
 
