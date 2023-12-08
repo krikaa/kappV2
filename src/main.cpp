@@ -4,7 +4,7 @@
 #include "nfc_new.h"
 #include "FBServer.h"
 
-// #define DEBUG
+#define DEBUG
 #include "SerialDebug.h"
 
 #define OPEN true
@@ -92,13 +92,13 @@ static void IndicateScan()
 
 	if (!UUID.isEmpty())
 	{
-		// digitalWrite(INDICATE_SCAN_LED, HIGH);
+		digitalWrite(INDICATE_SCAN_LED, HIGH);
 		Beep(150);
 		indicationStartTime = millis(); // Record the start time
 	}
 	else if (millis() - indicationStartTime >= INDICATION_DURATION_MS && indicationStartTime != 0)
 	{
-		// digitalWrite(INDICATE_SCAN_LED, LOW); // Turn off the LED after 2 seconds
+		digitalWrite(INDICATE_SCAN_LED, LOW); // Turn off the LED after 2 seconds
 		indicationStartTime = 0; // Reset the start time
 	}
 }
@@ -150,6 +150,9 @@ void setup()
 	Serial.println("Strated");
 	initPins();
 
+	NfcBeginNew(&UUID); 	// Sometimes fails - Manually reconnect VCC wire for NFC reader.
+	Beep(150);
+
 	ConnectWifi("");
 	ConnectFirebase();
 
@@ -157,20 +160,9 @@ void setup()
 	EEPROM.begin(EEPROM_SIZE);
 
 	SaveUserInfoEEPROM();
-	NfcBeginNew(&UUID); 	// Sometimes fails - Manually reconnect VCC wire for NFC reader.
 	attachInterrupt(MAGNET_SENSOR_PIN, ISRoutine, CHANGE);
 }
 
-// 	TODO: 	(EEPROM) When in setup():
-//			1) 	If wifi connected: Check all users in firebase
-//			   	Check EEPROM. Compare the users.
-//				If same - Dont write to EEPROM
-//				Not same - Update EEPROM
-//			2)	If not connected: Cant compare - Do nothing. Hope some users already in EEPROM.
-
-//			When in LOOP:
-//			3) 	If wifi connected: Do step 1) after every other day.
-//			4) 	If not connected: Use EEPROM users to open door.
 byte f = 0;
 void loop()
 {
@@ -197,7 +189,7 @@ void loop()
 	SaveUserInfoEEPROM();
 
 	// Only use NFC specific tasks when solenoid and door are closed
-	if (solenoid_state == CLOSED && door_state == CLOSED) {
+	if (solenoid_state == CLOSED /*&& door_state == CLOSED*/) {
 		NfcTaskNew(&UUID);
 		IndicateScan();
 

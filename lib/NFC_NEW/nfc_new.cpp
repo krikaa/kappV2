@@ -3,7 +3,7 @@
 #include <Adafruit_PN532.h>
 #include "nfc_new.h"
 
-// #define DEBUG
+#define DEBUG
 #include "SerialDebug.h"
 
 #define PN532_IRQ (12)
@@ -11,7 +11,7 @@
 
 boolean nfc_connected_new = false;
 
-const int DELAY_BETWEEN_CARDS = 500;
+const int DELAY_BETWEEN_CARDS = 1000;
 long timeLastCardRead = 0;
 boolean readerDisabled = false;
 int irqCurr;

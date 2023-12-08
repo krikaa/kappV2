@@ -7,7 +7,7 @@
 #include "nfc_new.h"
 #include <EEPROM.h>
 
-// #define DEBUG
+#define DEBUG
 #include "SerialDebug.h"
 
 // Provide the token generation process info.
@@ -16,7 +16,7 @@
 #include "addons/RTDBHelper.h"
 
 #define WIFI_SSID "TalTech" 	// Change into your own WiFi SSID
-#define WIFI_PASSWORD "5"	// Change the password
+#define WIFI_PASSWORD ""	// Change the password
 
 #define API_KEY "API_KEY"
 #define DATABASE_URL "nutikapp-default-rtdb.europe-west1.firebasedatabase.app"
@@ -42,6 +42,8 @@ uint32_t sendDataPrev = 0;
 uint32_t sendDataPrevWifi = 0;
 uint32_t sendDataPrevSolenoid = 0;
 uint32_t sendDataPrevDoor = 0;
+uint32_t sendDataPrevNFC = 0;
+
 
 boolean wifi_connected = false;
 boolean ReadEEPROM = true;
@@ -345,6 +347,7 @@ static CMD_TYPE_E AddToLog(authorized_user_t *user)
 
 static CMD_TYPE_E AddStudentRights(String tagUUID) // Reads new card and saves into cards/
 {	
+	DBGL("Adding student");
 	String studentTag;
 	if (!ReadNewCard(&studentTag)) // Changes value of tagUUID
 	{
@@ -375,8 +378,6 @@ static CMD_TYPE_E AddStudentRights(String tagUUID) // Reads new card and saves i
 static char AskForInput() 
 { 
 	SWSerial.write('a');
-	DBGL("1 - Add student");
-	DBGL("2 - Open door");
 	long timeout = millis();
 	char inByte = '0';
 
@@ -489,6 +490,15 @@ static void SendStatusWiFi(){
 	}
 }
 
+static void SendNFCTimetamp(){
+	if(IsFireBaseReady(sendDataPrevNFC)){
+		if(Firebase.RTDB.setTimestamp(&fbdo, "lockers/locker1/nfc-last-connected")){
+			DBGL("\nfc status sent");
+		}
+		sendDataPrevNFC = millis();
+	}
+}
+
 
 static void SendWiFiStatus(){
 	static uint32_t wifi_last_status_sent = 0;
@@ -512,13 +522,14 @@ static void SendNFCStatus(){
 
 
 	if (((millis() - last_time_sent) > 1000) && last_nfc_conn_state != nfc_connected_new){
-		if(IsFireBaseReady(sendDataPrev)){
-			if(Firebase.RTDB.setBool(&fbdo, "lockers/locker1/nfc-connected", nfc_connected_new)){
-				DBG("NFC status sent: ");
-				nfc_connected_new == false ? DBGL("NOT CONNECTED") : DBGL("CONNECTED");
-			}
-			sendDataPrev = millis();
-		}
+		SendNFCTimetamp();
+		// if(IsFireBaseReady(sendDataPrev)){
+		// 	if(Firebase.RTDB.setBool(&fbdo, "lockers/locker1/nfc-connected", nfc_connected_new)){
+		// 		DBG("NFC status sent: ");
+		// 		nfc_connected_new == false ? DBGL("NOT CONNECTED") : DBGL("CONNECTED");
+		// 	}
+		// 	sendDataPrev = millis();
+		// }
 		last_time_sent = millis();
 		last_nfc_conn_state = nfc_connected_new;
 	}
