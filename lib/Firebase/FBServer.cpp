@@ -6,14 +6,11 @@
 #include "timeutils.h"
 #include "nfc_new.h"
 #include <EEPROM.h>
+#include "addons/TokenHelper.h"
+#include "addons/RTDBHelper.h"
 
 #define DEBUG
 #include "SerialDebug.h"
-
-// Provide the token generation process info.
-#include "addons/TokenHelper.h"
-// Provide the RTDB payload printing info and other helper functions.
-#include "addons/RTDBHelper.h"
 
 #define WIFI_SSID "TalTech" 	// Change into your own WiFi SSID
 #define WIFI_PASSWORD ""	// Change the password
@@ -21,14 +18,20 @@
 #define API_KEY "API_KEY"
 #define DATABASE_URL "nutikapp-default-rtdb.europe-west1.firebasedatabase.app"
 
-#define ADD_STUDENT 'a'
-#define OPEN_DOOR 's'
-#define CANCEL 'c'
+#define HR_TO_MS(x) 					(x * 3600000)
+#define MIN_TO_MS(x) 					(x * 60000)
+#define SEC_TO_MS(x) 					(x * 1000)
+
+#define UPDATE_DOOR_TIMEOUT_MS			SEC_TO_MS(1)
+#define CHECK_SOLENOID_TIMEOUT_MS		SEC_TO_MS(5)
+#define WIFI_TIMEOUT_MS 				SEC_TO_MS(30)			
+#define SEND_NFC_STATUS_TIMEOUT_MS		MIN_TO_MS(5)
+#define SEND_WIFI_STATUS_TIMEOUT_MS		MIN_TO_MS(5)
+#define UPDATE_EEPROM_TIMEOUT_MS		HR_TO_MS(12)
 
 #define MAX_TAG_LEN 21
 #define MAX_USERS 100 // Max size of user tag is 21 bytes - Max EEPROM usage 2100 bytes
 
-#define WIFI_TIMEOUT 30000 // 30 seconds
 
 struct User {
     char tag[MAX_TAG_LEN];
@@ -169,7 +172,7 @@ void printUserTagsEEPROM(){
 
 void ClearEEPROM(){
 	size_t eepromAddr = 0;
-	EEPROM.begin(4096);
+	EEPROM.begin(2048);
     while (eepromAddr < EEPROM.length()) {
 		EEPROM.write(eepromAddr, 0);
 		eepromAddr++;
@@ -205,7 +208,7 @@ boolean SaveUserInfoEEPROM() {
 	static uint32_t last_check = 0;
 	
 	// TODO: Change time to ~ 12-24 hr 
-	if((millis() - last_check > 300000) || last_check == 0) {
+	if((millis() - last_check > UPDATE_EEPROM_TIMEOUT_MS) || last_check == 0) {
 
 		GetAllUsersFireBase();		// Rewrites userTagsFirebase
 		GetAllUsersEEPROM(); 		// Rewrites userTagsEEPROM
@@ -281,6 +284,7 @@ static CMD_TYPE_E GetTagEEPROM(String UUID) {
 
 static boolean GetUserInfo(String tagUUID, authorized_user_t *user) {
 
+	// Default values when card doesnt exist
 	user->UUID = tagUUID;
 	user->owner = "TBD";
 	user->type = "unknown";
@@ -289,8 +293,6 @@ static boolean GetUserInfo(String tagUUID, authorized_user_t *user) {
 	FirebaseJson fbjson;
 	FirebaseJsonData result;
 
-	// Default values when card doesnt exist
-	
 
 	if (Firebase.RTDB.getJSON(&fbdo, "cards/" + tagUUID)) // Looks if cards contains a node that satisfies nodeName == tagUUID
 	{
@@ -352,8 +354,7 @@ static CMD_TYPE_E AddStudentRights(String tagUUID) // Reads new card and saves i
 	if (!ReadNewCard(&studentTag)) // Changes value of tagUUID
 	{
 		DBGL("Failed to read new card");
-		Serial.println("Adding unsuccessful");
-		SWSerial.write('e');
+		SWSerial.write(SEND_ADDING_UNSUCCESSFUL);
 		return CMD_NO_OP;
 	}
 	FirebaseJson fbjson = SetStudentJSON();
@@ -361,23 +362,20 @@ static CMD_TYPE_E AddStudentRights(String tagUUID) // Reads new card and saves i
 	{
 		if (Firebase.RTDB.setTimestamp(&fbdo, "cards/" + studentTag + "/date_added"))
 		{
-			SWSerial.write('l');
-			Serial.println("Adding successful");
-			delay(2000);
+			SWSerial.write(SEND_ADDING_SUCCESSFUL);
 			DBGL("Student added");
 			return CMD_NO_OP;
 		}
 	}
 	DBGL("ERROR: Student not added");
-	Serial.println("Adding unsuccessful");
-	SWSerial.write('e');
+	SWSerial.write(SEND_ADDING_UNSUCCESSFUL);
 	return CMD_NO_OP;
 }
 
 // Temporary function until screen is used
 static char AskForInput() 
 { 
-	SWSerial.write('a');
+	SWSerial.write(SEND_ASK_INPUT);
 	long timeout = millis();
 	char inByte = '0';
 
@@ -386,14 +384,14 @@ static char AskForInput()
 		if (SWSerial.available())
 		{
 			inByte = SWSerial.read();
-			Serial.println("Got: " + String(inByte));
-			if (inByte == ADD_STUDENT || inByte == OPEN_DOOR || inByte == CANCEL) {
+			DBGL("Got: " + String(inByte));
+			if (inByte == REQUEST_ADD_STUDENT || inByte == REQUEST_OPEN_LOCK || inByte == REQUEST_CANCEL) {
 				return inByte;
 			}
 		}
 	} while (millis() - timeout < 5000); // Waits for 5 seconds from serial monitor input
 
-	return OPEN_DOOR;
+	return REQUEST_OPEN_LOCK;
 }
 
 static CMD_TYPE_E TeacherTask(authorized_user_t *user)
@@ -401,13 +399,14 @@ static CMD_TYPE_E TeacherTask(authorized_user_t *user)
 	char cmdAnswer = AskForInput(); // Change to screen input later
 	switch (cmdAnswer)
 	{
-	case ADD_STUDENT:
+	case REQUEST_ADD_STUDENT:
 		return AddStudentRights(user->UUID);
-		break;
 
-	case OPEN_DOOR:
+	case REQUEST_OPEN_LOCK:
 		return AddToLog(user);
-		break;
+
+	case REQUEST_CANCEL:
+		return CMD_NO_OP;
 
 	default:
 		DBGL("Wrong input");
@@ -466,7 +465,7 @@ CMD_TYPE_E FireBaseCheckSolenoid() {
 	static uint32_t solenoid_last_checked = 0;
 	static boolean solenoid_state = false;
 
-	if(millis() - solenoid_last_checked > 5000) {
+	if(millis() - solenoid_last_checked > CHECK_SOLENOID_TIMEOUT_MS) {
 		if (IsFireBaseReady(sendDataPrevSolenoid)) {
 			if(Firebase.RTDB.getBool(&fbdo,"lockers/locker1/solenoid-activated")){
 				solenoid_state = fbdo.to<bool>();
@@ -481,38 +480,36 @@ CMD_TYPE_E FireBaseCheckSolenoid() {
 	return CMD_DONT_OPEN;
 }
 
-static void SendStatusWiFi(){
+static void SendWiFiTimestamp(){
 	if(IsFireBaseReady(sendDataPrevWifi)){
 		if(Firebase.RTDB.setTimestamp(&fbdo, "lockers/locker1/wifi-last-connected")){
-			DBGL("\nWifi status sent");
+			DBGL("\nWifi timestamp sent");
 		}
 		sendDataPrevWifi = millis();
+	}
+}
+
+static void SendWiFiStatus(){
+	static uint32_t wifi_last_status_sent = 0;
+
+	if ((millis() - wifi_last_status_sent) > SEND_WIFI_STATUS_TIMEOUT_MS) {	 	// Every 5 Minutes
+		if(!wifi_connected) {					// Try to reconnect if disconnected
+			ConnectWifi("");
+			ConnectFirebase();
+		}
+		else{
+			SendWiFiTimestamp();				// Send status 
+		}
+		wifi_last_status_sent = millis();
 	}
 }
 
 static void SendNFCTimetamp(){
 	if(IsFireBaseReady(sendDataPrevNFC)){
 		if(Firebase.RTDB.setTimestamp(&fbdo, "lockers/locker1/nfc-last-connected")){
-			DBGL("\nfc status sent");
+			DBGL("\nNFC status sent:");
 		}
 		sendDataPrevNFC = millis();
-	}
-}
-
-
-static void SendWiFiStatus(){
-	static uint32_t wifi_last_status_sent = 0;
-
-	if ((millis() - wifi_last_status_sent) > 60000) {	 	// Every 5 Minutes
-		DBGL("Wifi status");
-		if(!wifi_connected) {								// Try to reconnect also
-			ConnectWifi("");
-			ConnectFirebase();
-		}
-		else{
-			SendStatusWiFi();								 	// Send status 
-		}
-		wifi_last_status_sent = millis();
 	}
 }
 
@@ -521,17 +518,9 @@ static void SendNFCStatus(){
 	static boolean last_nfc_conn_state = false;
 
 
-	if (((millis() - last_time_sent) > 1000) && last_nfc_conn_state != nfc_connected_new){
+	if (((millis() - last_time_sent) > SEND_NFC_STATUS_TIMEOUT_MS)){
 		SendNFCTimetamp();
-		// if(IsFireBaseReady(sendDataPrev)){
-		// 	if(Firebase.RTDB.setBool(&fbdo, "lockers/locker1/nfc-connected", nfc_connected_new)){
-		// 		DBG("NFC status sent: ");
-		// 		nfc_connected_new == false ? DBGL("NOT CONNECTED") : DBGL("CONNECTED");
-		// 	}
-		// 	sendDataPrev = millis();
-		// }
 		last_time_sent = millis();
-		last_nfc_conn_state = nfc_connected_new;
 	}
 }
 
@@ -539,7 +528,7 @@ void FireBaseUpdateDoorState(boolean door_state) {
 	static uint32_t last_time_sent = 0;
 	static boolean last_door_state = false;
 
-	if (((millis() - last_time_sent) > 1000) && last_door_state != door_state){
+	if (((millis() - last_time_sent) > UPDATE_DOOR_TIMEOUT_MS) && last_door_state != door_state){
 		if(IsFireBaseReady(sendDataPrevDoor)){
 			if(Firebase.RTDB.setBool(&fbdo, "lockers/locker1/door-open", door_state)){
 				DBG("Door state sent: ");
@@ -557,8 +546,6 @@ void SendDeviceStatuses(){
 	SendNFCStatus();
 }
 
-
-
 void ConnectWifi(const char* pass)
 {
 	static int i = 0;
@@ -568,7 +555,7 @@ void ConnectWifi(const char* pass)
 
 	unsigned long startMillis = millis();
 
-	while (WiFi.status() != WL_CONNECTED && millis() - startMillis < WIFI_TIMEOUT) {
+	while (WiFi.status() != WL_CONNECTED && millis() - startMillis < WIFI_TIMEOUT_MS) {
 		DBG(".");
 		delay(100);
 	}

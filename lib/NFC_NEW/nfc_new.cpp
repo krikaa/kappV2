@@ -6,12 +6,14 @@
 #define DEBUG
 #include "SerialDebug.h"
 
-#define PN532_IRQ (12)
-#define PN532_RESET (D3) // Not connected by default on the NFC Shield
+#define PN532_IRQ 			(12)
+#define PN532_RESET 		(D3) // Not connected by default on the NFC Shield
+
+#define NFC_RESET_TIMEOUT 	600000
+#define DELAY_BETWEEN_CARDS 1000
 
 boolean nfc_connected_new = false;
 
-const int DELAY_BETWEEN_CARDS = 1000;
 long timeLastCardRead = 0;
 boolean readerDisabled = false;
 int irqCurr;
@@ -57,14 +59,13 @@ void handleCardDetected(String *UUID)
 
 boolean ReadNFC(String *UUID)
 {
-	uint8_t success = false;
 	uint8_t uid[] = {0, 0, 0, 0, 0, 0, 0}; // Buffer to store the returned UID
 	uint8_t uidLength;	
 
 	if (nfc2.readPassiveTargetID(PN532_MIFARE_ISO14443A, uid, &uidLength, 300)) // Read until present 10ms timeout
 	{
 		*UUID = convertToString(uid, uidLength);
-		Serial.println(*UUID);
+		DBGL(*UUID);
 	}
 
 	if (*UUID == "")
@@ -77,10 +78,10 @@ boolean ReadNFC(String *UUID)
 
 boolean ReadNewCard(String *UUID)
 {
-	Serial.println("Reading new card");
+	DBGL("Reading new card");
 	for (int i = 0; i < 30; i++) // TODO: Change Hardcoded 50.
 	{
-		Serial.println(i);
+		DBGL(i);
 		if (nfc_connected_new)
 		{
 			if (ReadNFC(UUID))
@@ -140,7 +141,7 @@ void NfcTaskNew(String *UUID){
 void NfcConnCheck(String *UUID){
     static uint32_t last_status_check = 0;
 
-	if((millis() - last_status_check) > 300000){ // 5 Min reset
+	if((millis() - last_status_check) > NFC_RESET_TIMEOUT){ // 5 Min reset
         NfcBeginNew(UUID);
 
         last_status_check = millis();
@@ -149,18 +150,15 @@ void NfcConnCheck(String *UUID){
 
 void NfcBeginNew(String *UUID){
     nfc2.begin();
-
+	digitalWrite(0, LOW);
     uint32_t versiondata = nfc2.getFirmwareVersion();
 	if (!versiondata)
 	{
 		DBG("Didn't find PN53x board");
         nfc_connected_new = false;
         return;
-		// while (1);
-			 // halt
 	}
     nfc_connected_new = true;
-	// Got ok data, print it out!
 	DBGL("NFC Connected");
 
     startListeningToNFC(UUID);
