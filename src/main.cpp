@@ -26,18 +26,28 @@
 // T_CS - 16
 // T_DIN - 13
 // T_DO - 12
+#define RECEIVE_ASK_INPUT 				'a'
+#define RECEIVE_OPEN_LOCK 				'o'
+#define RECEIVE_OPEN_DOOR 				'd'
+#define RECEIVE_CLOSE_DOOR 				'c'
+#define RECEIVE_NO_ACCESS 				'n'
+#define RECEIVE_ADDING_UNSUCCESSFUL  	'e'
+#define RECEIVE_ADDING_SUCCESSFUL  		'l'
 
+#define SEND_OPEN_LOCK					's'
+#define SEND_ADD_STUDENT 				'a'
+#define SEND_CLOSE_ADMIN				'c'
 // Add button size
-#define ADDBUTTON_X 40
-#define ADDBUTTON_Y 80
-#define ADDBUTTON_W 240
-#define ADDBUTTON_H 65
+#define ADDBUTTON_X 					40
+#define ADDBUTTON_Y 					80
+#define ADDBUTTON_W 					240
+#define ADDBUTTON_H 					65
 
 // Log  button size
-#define LOGBUTTON_X 40
-#define LOGBUTTON_Y 160
-#define LOGBUTTON_W 240
-#define LOGBUTTON_H 65
+#define LOGBUTTON_X 					40
+#define LOGBUTTON_Y 					160
+#define LOGBUTTON_W 					240
+#define LOGBUTTON_H 					65
 
 TFT_eSPI tft = TFT_eSPI();
 
@@ -52,9 +62,8 @@ TFT_eSPI tft = TFT_eSPI();
 
 bool switchOn = false;
 bool adminViewOn = false;
+byte rec = 0;
 uint16_t x, y;
-
-
 
 int rgb(unsigned char r, unsigned char g, unsigned char b) {
     if (r < 0 || 255 < r || g < 0 || 255 < g || b < 0 || b > 255)
@@ -86,7 +95,7 @@ void Boot()
 	tft.setTextColor(TFT_WHITE, TFT_BLACK);
 	tft.setTextDatum(MC_DATUM);
 	tft.loadFont(SatoshiBlack46);
-	tft.drawString("BOOT", 160, 120);
+	tft.drawString("Boot success", 160, 120);
 	tft.unloadFont();
 }
 
@@ -98,27 +107,26 @@ void drawCloseButton()
 	int lineWidth = 5;
 	for (int i = 0; i < lineWidth; ++i)
 	{
-		tft.drawLine(closeButtonX + i, closeButtonY, closeButtonX + closeButtonSize + i, closeButtonY + closeButtonSize, TFT_MAROON);
-		tft.drawLine(closeButtonX + i, closeButtonY + closeButtonSize, closeButtonX + closeButtonSize + i, closeButtonY, TFT_MAROON);
+		tft.drawLine(closeButtonX + i, closeButtonY, closeButtonX + closeButtonSize + i, closeButtonY + closeButtonSize, rgb(190,0,0));
+		tft.drawLine(closeButtonX + i, closeButtonY + closeButtonSize, closeButtonX + closeButtonSize + i, closeButtonY, rgb(190,0,0));
 	}
 }
 
 void addingEndedView(boolean added)
 {
 	tft.fillScreen(TFT_BLACK);
-	tft.setTextColor(TFT_WHITE, TFT_BLACK);
+	tft.setTextColor(TFT_WHITE, TFT_BLACK, true);
 	tft.setTextDatum(MC_DATUM);
-	tft.setTextWrap(160,105);
+	tft.setTextWrap(true);
 	if(added){
-		tft.drawString("Successfully added user", 160, 105);
+		tft.drawString("Successfully", 160, 105);
+		tft.drawString("added user", 160, 145);
 		delay(3000);
-		tft.unloadFont();
 		normalView();
 	}
 	else{
 		tft.drawString("No card scanned", 160, 105);
 		delay(3000);
-		tft.unloadFont();
 		normalView();
 	}
 }
@@ -193,30 +201,50 @@ void adminView()
 
 void addUserView()
 {
-	// static uint32_t now = millis();
 	tft.loadFont(SatoshiBlack32);
 	tft.fillScreen(TFT_BLACK);
-	tft.setTextColor(TFT_WHITE, TFT_BLACK);
+	tft.setTextColor(TFT_WHITE, TFT_BLACK, true);
 	tft.setTextDatum(MC_DATUM);
 	tft.drawString("Scan card", 160, 100);
 	tft.drawString("to add user", 160, 140);
-	Serial.write('a');
+	Serial.write(SEND_ADD_STUDENT);
 	tft.setTextDatum(ML_DATUM);
-	while (1){
-		byte rec = Serial.read();
-		if (rec == 'l')
-		{
-			addingEndedView(true);
-			break;
-		}
-		if (rec == 'e')
-		{
-			addingEndedView(false);
-			break;
-		}		
-	}
 
-	
+	long timeout = millis();
+	long sec_timer = 0;
+	long now;
+	char inByte = '0';
+	int count = 9;
+	do
+	{
+		if(count < 0) break;
+		now = millis();
+		if((now - sec_timer) >= 1000) {
+			tft.fillRect(150,190,27,31,TFT_BLACK);
+			tft.setTextColor(TFT_WHITE, TFT_BLACK);
+			tft.setCursor(150, 190);
+			tft.print(count, 0);
+			count--;
+			sec_timer = now;
+		}
+		if (Serial.available())
+		{
+			inByte = Serial.read();
+			if (inByte == RECEIVE_ADDING_SUCCESSFUL)
+			{
+				addingEndedView(true);
+				tft.unloadFont();
+				return;
+			}
+			else if (inByte == RECEIVE_ADDING_SUCCESSFUL)
+			{
+				addingEndedView(false);
+				tft.unloadFont();
+				return;
+			}	
+		}
+	} while (now - timeout < 10000); // Waits for 5 seconds from serial monitor input
+	addingEndedView(false);
 
 	tft.unloadFont();
 }
@@ -296,7 +324,6 @@ void touch_calibrate()
 void setup(void)
 {
 	Serial.begin(9600);
-	Serial.println("HELLO");
 	tft.init();
 
 	tft.setRotation(1);
@@ -304,25 +331,15 @@ void setup(void)
 	touch_calibrate();
 
 	tft.fillScreen(TFT_BLACK);
-	// tft.loadFont(NotoSansBold36);
-	// draw normal view
 	Boot();
+	delay(1000);
+	normalView();
 	Serial.flush();
 }
 
-void displaySreenMiddle(const char* str, uint16_t bgc){
-	tft.loadFont(SatoshiBlack32);
-	tft.fillScreen(bgc);
-	tft.setTextColor(TFT_WHITE, bgc);
-	tft.setTextDatum(MC_DATUM);
-	tft.drawString(str, 160, 120);
-	tft.unloadFont();
-}
+//------------------------------------------------------------------------------------------
+//------------------------------------------------------------------------------------------
 
-//------------------------------------------------------------------------------------------
-//------------------------------------------------------------------------------------------
-int i = 0;
-byte rec;
 void loop()
 {
 
@@ -331,73 +348,67 @@ void loop()
 	{
 
 		rec = Serial.read();
-		// unsigned char chars[5] = {'a','o','d','n','c'};
-		// if(i == 5) i = 0;
-		// rec = chars[i];
 
-		if (rec == 'a')
+		if (rec == RECEIVE_ASK_INPUT)
 		{
 			adminView();
 		}
-		else if (rec == 'o')
+		else if (rec == RECEIVE_OPEN_LOCK)
 		{
 			addBubble(40,80,240,65,TFT_DARKGREEN, "Lock opened");
-			delay(2000);
+			delay(5000);
 			normalView();
 		}
-		else if (rec == 'd')
+		else if (rec == RECEIVE_OPEN_DOOR)
 		{
 			addBubble(40,80,240,65,TFT_DARKGREEN, "Door opened");
-			delay(2000);
+			delay(3000);
 			normalView();
 		}
-		else if (rec == 'n')
-		{
-			addBubble(40,80,240,65,TFT_MAROON, "No access");
-			delay(2000);
-			normalView();
-		}
-		else if (rec == 'c')
+		else if (rec == RECEIVE_CLOSE_DOOR)
 		{
 			addBubble(40,80,240,65,TFT_DARKGREY, "Door closed");
-			delay(2000);
+			delay(3000);
+			normalView();
+		}
+		else if (rec == RECEIVE_NO_ACCESS)
+		{
+			addBubble(40,80,240,65,TFT_MAROON, "No access");
+			delay(3000);
 			normalView();
 		}
 	}
 
 	// See if there's any touch data from display
+	uint32_t now = millis();
+	uint32_t last = now;
 	if (adminViewOn)
 	{
-		// static uint32_t last = millis();
-		// uint32_t now = millis();
-		// char sec[3];
-		// while(now - last < 5000){
+		if(now - last < 5000){
 			if (tft.getTouch(&x, &y))
 			{
-				if (x > 270 && y < 20)
+				if (x > 260 && y < 30)
 				{
-					Serial.write('c');
+					Serial.write(SEND_CLOSE_ADMIN);
 					normalView();
 				}
 				if ((x > ADDBUTTON_X) && (x < (ADDBUTTON_X + ADDBUTTON_W)))
 				{
 					if ((y > ADDBUTTON_Y) && (y <= (ADDBUTTON_Y + ADDBUTTON_H)))
 					{
-						// addUserView();
 						addUserView();
-						// delay(5000);
-						// normalView();
 					}
 				}
 				if ((x > LOGBUTTON_X) && (x < (LOGBUTTON_X + LOGBUTTON_W)))
 				{
 					if ((y > LOGBUTTON_Y) && (y <= (LOGBUTTON_Y + LOGBUTTON_H)))
 					{
-						addBubble(40,80,240,65,TFT_DARKGREEN, "Lock opened");
-						delay(2000);
-						normalView();
+						Serial.write(SEND_OPEN_LOCK);
 					}
 				}
 			}
+			last = millis();
+		}
+		else normalView();
 	}
 }
