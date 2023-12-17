@@ -2,6 +2,9 @@
 #include <stdint.h>
 #include <Arduino.h>
 
+#define MAX_TAG_LEN 21
+#define MAX_USERS 100 // Max size of user tag is 21 bytes - Max EEPROM usage 2100 bytes
+
 typedef enum {
     CMD_OPEN,
     CMD_DONT_OPEN,
@@ -18,6 +21,10 @@ typedef struct {
     unsigned long long date_valid;
 } authorized_user_t;
 
+struct User {
+    char tag[MAX_TAG_LEN];
+};
+
 void ConnectWifi(const char*);
 void ConnectFirebase();
 
@@ -27,13 +34,10 @@ CMD_TYPE_E FireBaseCheckSolenoid();
 void FireBaseUpdateDoorState(boolean);
 
 boolean GetAllUsersFireBase();
-boolean GetAllUsersEEPROM();
-boolean SaveUserInfoEEPROM();
-void ClearEEPROM();
-
-// void printUserTagsFirebase();
-// void printUserTagsEEPROM();
+void printUserTagsFirebase();
 
 void SendDeviceStatuses();
 
 extern boolean wifi_connected;
+extern const char *userTagsFirebase[MAX_USERS];
+extern size_t numUsersFireBase;

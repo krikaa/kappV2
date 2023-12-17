@@ -1,10 +1,12 @@
+#pragma once
 #include <stdint.h>
 #include <Arduino.h>
-#pragma once
 
-void NfcBegin();
-boolean NfcTask(String *);
-boolean ReadNFC(String *);
+void NfcBegin(String *);
+void NfcTask(String *);
+void NfcConnCheck(String *);
+// void handleCardDetected(String *);
+// boolean ReadNFC(String *);
 boolean ReadNewCard(String *);
 
-extern boolean nfc_connected;  
+extern boolean nfc_connected;

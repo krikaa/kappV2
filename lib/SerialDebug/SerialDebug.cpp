@@ -1,5 +1,4 @@
 #include <SerialDebug.h>
-#include <SoftwareSerial.h>
 
 #define RX_PIN D5   // Hall
 #define TX_PIN D0   // Valge
@@ -13,4 +12,9 @@ int SWSerialBegin(uint16_t baud) {
         return -1;
     }
     return 1;
+}
+
+void SWSerialWrite(uint16_t cmd) {
+    SWSerial.write(SEND_OPEN_LOCK);
+    SWSerial.flush();
 }

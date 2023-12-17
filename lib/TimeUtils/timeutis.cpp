@@ -48,10 +48,9 @@ struct tm ConvertFromTimeStamp(unsigned long long tstamp) // Converts timestamp 
 	if (!getLocalTime(&timeinfo))
 	{
 		DBGL("Failed to obtain time");
-		return timeinfo; // TODO: return some error when fails.
+		return timeinfo;
 	}
 	time(&now);
-	// PrintTime(timeinfo);
 	return timeinfo;
 }
 
@@ -76,29 +75,13 @@ void ConfigTime()
 	configTime(TIMEZONE_OFFSET, DAY_LIGHT_SAVINGS, NTP_SERVER);
 }
 
-// Sygis semester: ~ 04.09 - 21.01 | kuud: 7, 8, 9, 10, 11, 12, 1
-// Kevad semester: ~ 29.01 - 12.6  | kuud: 1, 2, 3, 4, 5, 6
+// Autumn semester: ~ 04.09 - 21.01 | months: 7, 8, 9, 10, 11, 12, 1
+// Spring semester: ~ 29.01 - 12.6  | months: 1, 2, 3, 4, 5, 6
 
 struct tm GetSemesterEnd() // Returns struct tm of semester end
 { 
 
 	struct tm current_time = GetEpochTime();
-
-	// UNCOMMENT TO DEBUG/TEST THIS FUNCTION (REMOVE AFTER RELEASE)
-
-	// int month, day;
-	// DBGL("Enter Month (0-11): ");
-	// while (!Serial.available()) {} // Wait for input
-	// month = Serial.parseInt();
-	// DBGL(month); // Print the entered month
-
-	// DBGL("Enter Day (1-31): ");
-	// while (!Serial.available()) {} // Wait for input
-	// day = Serial.parseInt();
-	// DBGL(day); // Print the entered day
-
-	// current_time.tm_mon = month;
-	// current_time.tm_mday = day;
 
 	current_time.tm_hour = 23;
 	current_time.tm_min = 59;
@@ -106,30 +89,28 @@ struct tm GetSemesterEnd() // Returns struct tm of semester end
 
 	if (current_time.tm_mon > 5 && current_time.tm_mon <= 11)
 	{
-		// Sygissemester voi suve kuu
+		// Autumn semester or summer month
 		current_time.tm_mday = 21;
-		current_time.tm_mon = 0; // Sygisel lopp
+		current_time.tm_mon = 0; // Ends in autumn
 		current_time.tm_year += 1;
-		// return 0;
 	}
 	else if (current_time.tm_mon >= 0 && current_time.tm_mon <= 5)
 	{
-		// Kevadsemester
+		// Spring semester
 		if ((current_time.tm_mon == 5 && current_time.tm_mday >= 12) || // Juuni 12 - ...
-			(current_time.tm_mon == 0 && current_time.tm_mday < 21))
-		{ // Jaanuar 1-20 -> sygissemester
-
+			(current_time.tm_mon == 0 && current_time.tm_mday < 21))	// January 1-20 -> sygissemester
+		{ 
 			if (current_time.tm_mon == 5)
 			{
 				current_time.tm_year += 1;
 			}
 			current_time.tm_mday = 21;
-			current_time.tm_mon = 0; // Sygisel lopp
+			current_time.tm_mon = 0; // Ends in autumn
 		}
 		else
 		{
 			current_time.tm_mday = 12;
-			current_time.tm_mon = 5; // Kevadel lopp
+			current_time.tm_mon = 5; // Ends in spring
 		}
 	}
 	PrintTime(current_time);

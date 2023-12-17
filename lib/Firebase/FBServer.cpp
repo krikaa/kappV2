@@ -1,22 +1,22 @@
-#include <Arduino.h>
 #include <ESP8266WiFi.h>
 #include <Firebase_ESP_Client.h>
 #include <ArduinoJson.h>
 #include "FBServer.h"
 #include "timeutils.h"
-#include "nfc_new.h"
-#include <EEPROM.h>
+#include "nfc.h"
+#include "user_eeprom.h"
+
 #include "addons/TokenHelper.h"
 #include "addons/RTDBHelper.h"
 
 #define DEBUG
 #include "SerialDebug.h"
 
-#define WIFI_SSID "TalTech" 	// Change into your own WiFi SSID
-#define WIFI_PASSWORD ""	// Change the password
+#define WIFI_SSID 						"TalTech" 	// Change into your own WiFi SSID
+#define WIFI_PASSWORD 					""	// Change the password
 
-#define API_KEY "API_KEY"
-#define DATABASE_URL "nutikapp-default-rtdb.europe-west1.firebasedatabase.app"
+#define API_KEY 						"API_KEY"
+#define DATABASE_URL 					"nutikapp-default-rtdb.europe-west1.firebasedatabase.app"
 
 #define HR_TO_MS(x) 					(x * 3600000)
 #define MIN_TO_MS(x) 					(x * 60000)
@@ -29,13 +29,9 @@
 #define SEND_WIFI_STATUS_TIMEOUT_MS		MIN_TO_MS(5)
 #define UPDATE_EEPROM_TIMEOUT_MS		HR_TO_MS(12)
 
-#define MAX_TAG_LEN 21
-#define MAX_USERS 100 // Max size of user tag is 21 bytes - Max EEPROM usage 2100 bytes
+#define MAX_TAG_LEN 					21
+#define MAX_USERS 						100 // Max size of user tag is 21 bytes - Max EEPROM usage 2100 bytes
 
-
-struct User {
-    char tag[MAX_TAG_LEN];
-};
 
 FirebaseAuth auth;
 FirebaseConfig config;
@@ -47,14 +43,10 @@ uint32_t sendDataPrevSolenoid = 0;
 uint32_t sendDataPrevDoor = 0;
 uint32_t sendDataPrevNFC = 0;
 
-
 boolean wifi_connected = false;
-boolean ReadEEPROM = true;
 
 const char *userTagsFirebase[MAX_USERS] = {nullptr};
-const char *userTagsEEPROM[MAX_USERS] = {nullptr};
 size_t numUsersFireBase = 0;
-size_t numUsersEEPROM = 0;
 
 bool signupOK = false;
 
@@ -79,7 +71,8 @@ static void PrintUser(authorized_user_t user) // For debugging
 	DBGL(user.type);
 }
 
-static FirebaseJson SetLogEntryJSON(String tagUUID, String name, String type, String action) // Returns json of log entry
+// Returns JSON format log entry
+static FirebaseJson SetLogEntryJSON(String tagUUID, String name, String type, String action) 
 {
 	FirebaseJson fbjson;
 	fbjson.add("name", name);
@@ -90,6 +83,7 @@ static FirebaseJson SetLogEntryJSON(String tagUUID, String name, String type, St
 	return fbjson;
 }
 
+// Inits and returns JSON format student
 static FirebaseJson SetStudentJSON()
 {
 	FirebaseJson fbjson;
@@ -102,186 +96,8 @@ static FirebaseJson SetStudentJSON()
 	return fbjson;
 }
 
-// Returns all users from FireBase that should have access
-boolean GetAllUsersFireBase() {
-	if(!wifi_connected) return false;
-	FirebaseJson fbjson;
-	QueryFilter filter;
-	FirebaseJsonData result;
-
-	filter.orderBy("$key");
-	if(IsFireBaseReady(sendDataPrev)){
-		if (Firebase.RTDB.getJSON(&fbdo, "cards/", &filter)) // Looks if cards contains a node that satisfies nodeName == tagUUID
-		{
-			fbjson = fbdo.to<FirebaseJson>();
-			String jsonstr;
-			fbjson.toString(jsonstr,true);
-			size_t size = strlen(jsonstr.c_str());
-			// DBGL(size);
-			// DBGL(sizeof(jsonstr));
-			// return true;
-			// StaticJsonDocument <size> doc;
-			DynamicJsonDocument doc(size + 1);
-			DeserializationError error = deserializeJson(doc, jsonstr);
-
-			if (error) {
-				DBG(F("JSON parsing failed: "));
-				DBGL(error.c_str());
-				doc.clear();
-				return false;  
-			}
-            numUsersFireBase = 0;
-			unsigned long long current_timestamp = ConvertToTimeStamp(GetEpochTime());
-
-			for (const auto& element : doc.as<JsonObject>()) {
-				const char* userTag = element.key().c_str();
-                fbjson.get(result, String(userTag) + "/date_valid");
-
-                unsigned long long date_valid_timestamp = (unsigned long long)result.doubleValue;
-				// DBG(userTag);
-				// DBG(" ");
-				// DBGL(date_valid_timestamp);
-				if (current_timestamp <= date_valid_timestamp) {
-					userTagsFirebase[numUsersFireBase] = strdup(userTag); // Use strdup to duplicate the string
-					// DBGL(userTagsFirebase[numUsers]);
-					numUsersFireBase++;
-				}
-			}
-			doc.clear();
-			userTagsFirebase[numUsersFireBase] = NULL;
-			sendDataPrev = millis();
-			return true;
-		}
-	}
-	return false;
-}
-
-void printUserTagsFirebase(){
-	DBGL("FIREBASE:");
-	for (size_t i = 0; i < numUsersFireBase;  ++i){
-		DBGL(userTagsFirebase[i]);
-	}
-}
-
-void printUserTagsEEPROM(){
-	DBGL("EEPROM:");
-	for (size_t i = 0 ; i < numUsersEEPROM;  ++i){
-		DBGL(userTagsEEPROM[i]);
-	}
-}
-
-void ClearEEPROM(){
-	size_t eepromAddr = 0;
-	EEPROM.begin(2048);
-    while (eepromAddr < EEPROM.length()) {
-		EEPROM.write(eepromAddr, 0);
-		eepromAddr++;
-	}
-	DBGL("EEPROM Cleared");
-	EEPROM.end();
-}
-
-static boolean UsersUpToDateInEEPROM() {
-	// DBGL("Num users EEPROM " + String(numUsersEEPROM) + " Num users Firebase " + String(numUsersFireBase));
-	if(!wifi_connected) {
-		return true;
-	}
-
-	if(numUsersEEPROM != numUsersFireBase) {
-		DBGL("User count not the same");
-		
-		return false; // Different amount of users.
-	}
-	for (size_t i = 0; i < numUsersFireBase; i++) {	
-		if(strcmp(userTagsEEPROM[i], userTagsFirebase[i]) != 0) {
-			DBGL("Users not the same");
-			return false;
-		}
-	}
-	return true;
-}
-
-
-// First check if the current EEPROM has similar users already
-// This helps reduce the write amounts to flash memory.
-boolean SaveUserInfoEEPROM() {
-	static uint32_t last_check = 0;
-	
-	// TODO: Change time to ~ 12-24 hr 
-	if((millis() - last_check > UPDATE_EEPROM_TIMEOUT_MS) || last_check == 0) {
-
-		GetAllUsersFireBase();		// Rewrites userTagsFirebase
-		GetAllUsersEEPROM(); 		// Rewrites userTagsEEPROM
-		printUserTagsEEPROM();
-		printUserTagsFirebase();
-
-		if (UsersUpToDateInEEPROM() == true) 
-		{
-			DBGL("Users up to date");
-			last_check = millis();
-			return false;
-		}
-		DBGL("WRITING EEPROM");
-		numUsersEEPROM = 0;
-		ReadEEPROM = true;
-		int eepromAddr = 0;
-		for (size_t i = 0; i < numUsersFireBase; ++i) {
-			User user;
-			strncpy(user.tag, userTagsFirebase[i], MAX_TAG_LEN - 1); // Ensure null-termination
-			user.tag[MAX_TAG_LEN - 1] = '\0'; // Ensure null-termination
-			userTagsEEPROM[numUsersEEPROM] = strdup(user.tag);
-			numUsersEEPROM = i;
-			DBGL(user.tag);
-			EEPROM.put(eepromAddr, user);
-			eepromAddr += sizeof(User);
-		}
-
-		EEPROM.write(eepromAddr, '\0'); // Ends array of tags
-		EEPROM.commit();
-		last_check = millis();
-		return true;
-	}
-	return false;
-}
-
-boolean GetAllUsersEEPROM() {
-	if(userTagsEEPROM != nullptr && ReadEEPROM == false){
-		DBGL("Value already assigned, wont read EEPROM");
-		return false;
-	}
-    size_t eepromAddr = 0;
-	numUsersEEPROM = 0;
-	DBGL("READING EEPROM");
-    for (size_t i = 0; i < MAX_USERS; ++i) {
-        User user;
-        EEPROM.get(eepromAddr, user);
-
-        // Check if the tag is empty (all zeros), indicating the end of stored data
-        if (user.tag[0] == '\0') {
-            break;
-        }
-        userTagsEEPROM[numUsersEEPROM] = strdup(user.tag);
-        numUsersEEPROM++;
-        eepromAddr += sizeof(User);
-    }
-	userTagsEEPROM[numUsersEEPROM] = NULL;
-	ReadEEPROM = false;
-    return true;
-}
-
-static CMD_TYPE_E GetTagEEPROM(String UUID) {
-	DBGL("Get tag EEPROM");
-	for (size_t i = 0; i < numUsersEEPROM; i++)
-	{
-		if(strcmp(UUID.c_str(), userTagsEEPROM[i]) == 0){
-			DBGL("Found");
-			return CMD_OPEN;
-		}
-	}
-	DBGL("Not found");
-	return CMD_DONT_OPEN;
-}
-
+// Gets user info from Firebase database by tagUUID
+// saves into *user
 static boolean GetUserInfo(String tagUUID, authorized_user_t *user) {
 
 	// Default values when card doesnt exist
@@ -328,6 +144,7 @@ static boolean GetUserInfo(String tagUUID, authorized_user_t *user) {
 	return false;
 }
 
+// Adds *user to log
 static CMD_TYPE_E AddToLog(authorized_user_t *user)
 {
 	FirebaseJson fbjson = SetLogEntryJSON(user->UUID, user->owner, user->type, user->action);
@@ -347,6 +164,8 @@ static CMD_TYPE_E AddToLog(authorized_user_t *user)
 	return CMD_DONT_OPEN;
 }
 
+// Lets a new card to be scanned
+// If card is scanned, adds students rights to Firebase database
 static CMD_TYPE_E AddStudentRights(String tagUUID) // Reads new card and saves into cards/
 {	
 	DBGL("Adding student");
@@ -354,7 +173,7 @@ static CMD_TYPE_E AddStudentRights(String tagUUID) // Reads new card and saves i
 	if (!ReadNewCard(&studentTag)) // Changes value of tagUUID
 	{
 		DBGL("Failed to read new card");
-		SWSerial.write(SEND_ADDING_UNSUCCESSFUL);
+		SWSerialWrite(SEND_ADDING_UNSUCCESSFUL);
 		return CMD_NO_OP;
 	}
 	FirebaseJson fbjson = SetStudentJSON();
@@ -362,20 +181,21 @@ static CMD_TYPE_E AddStudentRights(String tagUUID) // Reads new card and saves i
 	{
 		if (Firebase.RTDB.setTimestamp(&fbdo, "cards/" + studentTag + "/date_added"))
 		{
-			SWSerial.write(SEND_ADDING_SUCCESSFUL);
+			SWSerialWrite(SEND_ADDING_SUCCESSFUL);
 			DBGL("Student added");
 			return CMD_NO_OP;
 		}
 	}
 	DBGL("ERROR: Student not added");
-	SWSerial.write(SEND_ADDING_UNSUCCESSFUL);
+	SWSerialWrite(SEND_ADDING_UNSUCCESSFUL);
 	return CMD_NO_OP;
 }
 
-// Temporary function until screen is used
+// Asks for input from other ESP
+// Returns what is requested
 static char AskForInput() 
 { 
-	SWSerial.write(SEND_ASK_INPUT);
+	SWSerialWrite(SEND_ASK_INPUT);
 	long timeout = millis();
 	char inByte = '0';
 
@@ -394,6 +214,7 @@ static char AskForInput()
 	return REQUEST_OPEN_LOCK;
 }
 
+// Teacher choose to add new user or open door
 static CMD_TYPE_E TeacherTask(authorized_user_t *user)
 {
 	char cmdAnswer = AskForInput(); // Change to screen input later
@@ -415,69 +236,10 @@ static CMD_TYPE_E TeacherTask(authorized_user_t *user)
 	return CMD_DONT_OPEN;
 }
 
+// Add to log
 static inline CMD_TYPE_E StudentTask(authorized_user_t *user)
 {
 	return AddToLog(user);
-}
-
-CMD_TYPE_E FireBaseTask(String *UUID)
-{
-	if (*UUID == "") {
-		return CMD_DONT_OPEN;
-	}
-
-	if(!wifi_connected) {
-		return GetTagEEPROM(*UUID); // Returns the CMD if is present in EEPROM
-	}
-
-	authorized_user_t user;
-
-	if (IsFireBaseReady(sendDataPrev))
-	{
-		// Check if scanned card is one of the authorized user
-		if(!GetUserInfo(*UUID, &user)){
-			AddToLog(&user);
-			return CMD_DONT_OPEN;
-		}
-		// PrintUser(user); // For debugging
-		 
-		if (user.type == "teacher") // Card type: teacher
-		{
-			return TeacherTask(&user); // Has ability to add or open
-		}
-		else if (user.type == "student") // Card type: student
-		{
-			return StudentTask(&user); // Has ability to open
-		}
-		else
-		{
-			DBGL("Scanned UUID does not have access");
-			return CMD_DONT_OPEN;
-		}
-		sendDataPrev = millis();
-	}
-	return CMD_DONT_OPEN;
-}
-
-// Checks every 5 seconds, 
-// Opens door if "Ava kapp" pressed on webpage.
-CMD_TYPE_E FireBaseCheckSolenoid() {
-	static uint32_t solenoid_last_checked = 0;
-	static boolean solenoid_state = false;
-
-	if(millis() - solenoid_last_checked > CHECK_SOLENOID_TIMEOUT_MS) {
-		if (IsFireBaseReady(sendDataPrevSolenoid)) {
-			if(Firebase.RTDB.getBool(&fbdo,"lockers/locker1/solenoid-activated")){
-				solenoid_state = fbdo.to<bool>();
-				solenoid_last_checked = millis();
-			}
-			sendDataPrevSolenoid = millis();
-		}
-	}
-	if(solenoid_state){
-		return CMD_KEEP_OPEN;
-	}
-	return CMD_DONT_OPEN;
 }
 
 static void SendWiFiTimestamp(){
@@ -524,6 +286,83 @@ static void SendNFCStatus(){
 	}
 }
 
+// Prints all user tags from Firebase database
+void printUserTagsFirebase(){
+	DBGL("FIREBASE USERS:");
+	for (size_t i = 0; i < numUsersFireBase;  ++i){
+		DBGL(userTagsFirebase[i]);
+	}
+}
+
+// Returns all users from FireBase database that should have access to open locker
+boolean GetAllUsersFireBase() {
+	if(!wifi_connected) return false;
+	FirebaseJson fbjson;
+	QueryFilter filter;
+	FirebaseJsonData result;
+
+	filter.orderBy("$key");
+	if(IsFireBaseReady(sendDataPrev)){
+		if (Firebase.RTDB.getJSON(&fbdo, "cards/", &filter)) // Looks if cards contains a node that satisfies nodeName == tagUUID
+		{
+			fbjson = fbdo.to<FirebaseJson>();
+			String jsonstr;
+			fbjson.toString(jsonstr,true);
+			size_t size = strlen(jsonstr.c_str());
+			DynamicJsonDocument doc(size + 1);
+			DeserializationError error = deserializeJson(doc, jsonstr);
+
+			if (error) {
+				DBG(F("JSON parsing failed: "));
+				DBGL(error.c_str());
+				doc.clear();
+				return false;  
+			}
+            numUsersFireBase = 0;
+			unsigned long long current_timestamp = ConvertToTimeStamp(GetEpochTime());
+
+			for (const auto& element : doc.as<JsonObject>()) {
+				const char* userTag = element.key().c_str();
+                fbjson.get(result, String(userTag) + "/date_valid");
+
+                unsigned long long date_valid_timestamp = (unsigned long long)result.doubleValue;
+
+				if (current_timestamp <= date_valid_timestamp) {
+					userTagsFirebase[numUsersFireBase] = strdup(userTag); // Use strdup to duplicate the string
+					numUsersFireBase++;
+				}
+			}
+			doc.clear();
+			userTagsFirebase[numUsersFireBase] = NULL;
+			sendDataPrev = millis();
+			return true;
+		}
+	}
+	return false;
+}
+
+// Checks every 5 seconds, 
+// Opens solenoid if "Ava kapp" pressed on webpage.
+CMD_TYPE_E FireBaseCheckSolenoid() {
+	static uint32_t solenoid_last_checked = 0;
+	static boolean solenoid_state = false;
+
+	if(millis() - solenoid_last_checked > CHECK_SOLENOID_TIMEOUT_MS) {
+		if (IsFireBaseReady(sendDataPrevSolenoid)) {
+			if(Firebase.RTDB.getBool(&fbdo,"lockers/locker1/solenoid-activated")){
+				solenoid_state = fbdo.to<bool>();
+				solenoid_last_checked = millis();
+			}
+			sendDataPrevSolenoid = millis();
+		}
+	}
+	if(solenoid_state){
+		return CMD_KEEP_OPEN;
+	}
+	return CMD_DONT_OPEN;
+}
+
+// Checks if door state has changed and updates it in Firebase database
 void FireBaseUpdateDoorState(boolean door_state) {
 	static uint32_t last_time_sent = 0;
 	static boolean last_door_state = false;
@@ -541,11 +380,56 @@ void FireBaseUpdateDoorState(boolean door_state) {
 	}
 }
 
+// Sends connection statuses of WiFi and NFC reader to Firebase database
+// Additionally tries to reconnect WiFi if it's disconnected
 void SendDeviceStatuses(){
 	SendWiFiStatus();
 	SendNFCStatus();
 }
 
+// Opens locker if scanned card has access
+// Adds to log if access rights exist
+// Additionally lets teacher add users 
+CMD_TYPE_E FireBaseTask(String *UUID)
+{
+	if (*UUID == "") {
+		return CMD_DONT_OPEN;
+	}
+
+	if(!wifi_connected) {
+		return GetTagEEPROM(*UUID); // Returns the CMD if is present in EEPROM
+	}
+
+	authorized_user_t user;
+
+	if (IsFireBaseReady(sendDataPrev))
+	{
+		// Check if scanned card is one of the authorized user
+		if(!GetUserInfo(*UUID, &user)){
+			AddToLog(&user);
+			return CMD_DONT_OPEN;
+		}
+		// PrintUser(user); // For debugging
+		 
+		if (user.type == "teacher") // Card type: teacher
+		{
+			return TeacherTask(&user); // Has ability to add or open
+		}
+		else if (user.type == "student") // Card type: student
+		{
+			return StudentTask(&user); // Has ability to open
+		}
+		else
+		{
+			DBGL("Scanned UUID does not have access");
+			return CMD_DONT_OPEN;
+		}
+		sendDataPrev = millis();
+	}
+	return CMD_DONT_OPEN;
+}
+
+// Creates WiFi connection
 void ConnectWifi(const char* pass)
 {
 	static int i = 0;
@@ -575,6 +459,7 @@ void ConnectWifi(const char* pass)
 	i++;
 }
 
+// Creates Firebase connection
 void ConnectFirebase()
 {
 	if(!wifi_connected) return;
@@ -587,17 +472,6 @@ void ConnectFirebase()
 
 	auth.user.email = "FIREBASE_EMAIL";
 	auth.user.password = "FIREBASE_PASSWORD";
-	
-	/* Sign up */
-	// if (Firebase.signUp(&config, &auth, "", ""))
-	// {
-	// 	DBGL("Signup OK");
-	// 	signupOK = true;
-	// }
-	// else
-	// {
-	// 	DBGf("%s\n", config.signer.signupError.message.c_str());
-	// }
 
 	signupOK = true;
 
@@ -606,16 +480,4 @@ void ConnectFirebase()
 
 	Firebase.begin(&config, &auth);
 	Firebase.reconnectWiFi(true);
-
-	// if(Firebase.authenticated()){
-	// 	DBGL("Authenticated");
-	// } 
-	// else {
-	// 	DBGL("Not authenticated");
-	// }
-
-	// if (Firebase.isTokenExpired()){
-	// 	Firebase.refreshToken(&config);
-	// 	DBGL("Refresh token");
-	// }
 }

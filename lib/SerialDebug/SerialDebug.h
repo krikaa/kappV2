@@ -26,4 +26,5 @@
 
 
 extern SoftwareSerial SWSerial;
-int SWSerialBegin(uint16_t baud);
+int SWSerialBegin(uint16_t);
+void SWSerialWrite(uint16_t);
