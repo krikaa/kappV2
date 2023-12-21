@@ -17,7 +17,7 @@ This repo is only for more convenient code management and project is intended on
 ![Schematic](https://github.com/siimtishler/kapp/blob/master/Schematic.png?raw=true)
 
 ## Installation
-To use the developed firmware on the chosen hardware for the cabinet, two ESP8266 devices have to be flashed. The main branch has to be flashed to the main ESP, and the display branch has to be flashed to the display ESP. With the MCUs flashed, the solution can be assembled according to the provided schematic. Files for 3D printable enclosures that were used to mount the chosen hardware components are also accessible in the "Enclosures" folder.
+To use the developed firmware on the chosen hardware for the cabinet, two ESP8266 devices have to be flashed. The main branch has to be flashed to the main ESP, and the display branch has to be flashed to the display ESP. With the MCUs flashed, the solution can be assembled according to the provided schematic. Files for 3D printable enclosures that were used to mount the chosen hardware components are also accessible in the "Enclosures" folder. More detailed information about the project can be found in the included report file.
 
 
 ## Technologies Used
