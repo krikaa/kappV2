@@ -1,18 +1,31 @@
-# Vue 3 + TypeScript + Vite
+# TARK LABORIKAPP / Smart Locker web interface, computers and systems project
 
-This template should help get you started developing with Vue 3 and TypeScript in Vite. The template uses Vue 3 `<script setup>` SFCs, check out the [script setup docs](https://v3.vuejs.org/api/sfc-script-setup.html#sfc-script-setup) to learn more.
+The web interface is used to check the opening logs of the locker, to add, remove, modify or extend locker opening rights, to check the status of the locker from distance, to open the door of the locker from distance.
 
-## Recommended IDE Setup
+## Configuration
 
-- [VS Code](https://code.visualstudio.com/) + [Volar](https://marketplace.visualstudio.com/items?itemName=Vue.volar) (and disable Vetur) + [TypeScript Vue Plugin (Volar)](https://marketplace.visualstudio.com/items?itemName=Vue.vscode-typescript-vue-plugin).
+To use this code, the repository needs to be cloned. After that a folder named "backend" has to be created inside the "src" folder. In the "backend" folder create a file called "firebase.ts" that will hold the configuration for the firebase database that holds your data and authentication.
 
-## Type Support For `.vue` Imports in TS
+The configuration file has to be in the following format:
 
-TypeScript cannot handle type information for `.vue` imports by default, so we replace the `tsc` CLI with `vue-tsc` for type checking. In editors, we need [TypeScript Vue Plugin (Volar)](https://marketplace.visualstudio.com/items?itemName=Vue.vscode-typescript-vue-plugin) to make the TypeScript language service aware of `.vue` types.
+import { initializeApp } from 'firebase/app';
 
-If the standalone TypeScript plugin doesn't feel fast enough to you, Volar has also implemented a [Take Over Mode](https://github.com/johnsoncodehk/volar/discussions/471#discussioncomment-1361669) that is more performant. You can enable it by the following steps:
+const firebaseConfig =
+{
+   apiKey: "YOUR_API_KEY",
+   authDomain: "YOUR_AUTH_DOMAIN",
+   databaseURL: "YOUR_DATABASE_URL",
+   projectId: "YOUR_PROJECT_ID",
+   storageBucket: "YOUR_STORAGE_BUCKET",
+   messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
+   appId: "YOUR_APP_ID",
+   measurementId: "YOUR_MEASUREMENT_ID"
+}
+const firebaseInstance = initializeApp(firebaseConfig);
+export default firebaseInstance;
 
-1. Disable the built-in TypeScript Extension
-   1. Run `Extensions: Show Built-in Extensions` from VSCode's command palette
-   2. Find `TypeScript and JavaScript Language Features`, right click and select `Disable (Workspace)`
-2. Reload the VSCode window by running `Developer: Reload Window` from the command palette.
+The Firebase configuration values can be obtained from the Firebase console.
+
+## Info
+
+Further documentation and description of the web interface is available in the master branch of this repository
