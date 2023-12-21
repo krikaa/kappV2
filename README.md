@@ -1,13 +1,13 @@
-# TARK LABORIKAPP / Smart Locker web interface, computers and systems project
+# TARK LABORIKAPP / Smart Locker web interface
 
-The web interface is used to check the opening logs of the locker, to add, remove, modify or extend locker opening rights, to check the status of the locker from distance, to open the door of the locker from distance.
+This is the readme file of an university project, where the task was to modify an existing laboratory locker by adding a smart locking feature. The web interface is used to check the opening logs of the locker, to add, remove, modify or extend locker opening rights, to check the status of the locker from distance, to open the door of the locker from distance.
 
 ## Configuration
 
 To use this code, the repository needs to be cloned. After that a folder named "backend" has to be created inside the "src" folder. In the "backend" folder create a file called "firebase.ts" that will hold the configuration for the firebase database that holds your data and authentication.
 
 The configuration file has to be in the following format:
-
+```typescript
 import { initializeApp } from 'firebase/app';
 
 const firebaseConfig =
@@ -21,9 +21,11 @@ const firebaseConfig =
    appId: "YOUR_APP_ID",
    measurementId: "YOUR_MEASUREMENT_ID"
 }
-const firebaseInstance = initializeApp(firebaseConfig);
-export default firebaseInstance;
 
+const firebaseInstance = initializeApp(firebaseConfig);
+
+export default firebaseInstance;
+```
 The Firebase configuration values can be obtained from the Firebase console.
 
 ## Info
