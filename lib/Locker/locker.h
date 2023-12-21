@@ -1,9 +1,9 @@
 #pragma once
 #include <Arduino.h>
-#include "FBServer.h"
 
 #define OPEN 					true
 #define CLOSED 					false
+#define KEEP_OPEN               2
 
 void initLockerDevs();
 void initInterruptMagnet();

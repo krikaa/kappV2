@@ -18,19 +18,11 @@
 #define API_KEY 						"API_KEY"
 #define DATABASE_URL 					"nutikapp-default-rtdb.europe-west1.firebasedatabase.app"
 
-#define HR_TO_MS(x) 					(x * 3600000)
-#define MIN_TO_MS(x) 					(x * 60000)
-#define SEC_TO_MS(x) 					(x * 1000)
-
 #define UPDATE_DOOR_TIMEOUT_MS			SEC_TO_MS(1)
 #define CHECK_SOLENOID_TIMEOUT_MS		SEC_TO_MS(5)
 #define WIFI_TIMEOUT_MS 				SEC_TO_MS(30)			
 #define SEND_NFC_STATUS_TIMEOUT_MS		MIN_TO_MS(5)
 #define SEND_WIFI_STATUS_TIMEOUT_MS		MIN_TO_MS(5)
-#define UPDATE_EEPROM_TIMEOUT_MS		HR_TO_MS(12)
-
-#define MAX_TAG_LEN 					21
-#define MAX_USERS 						100 // Max size of user tag is 21 bytes - Max EEPROM usage 2100 bytes
 
 
 FirebaseAuth auth;

@@ -1,8 +1,11 @@
 #include <EEPROM.h>
 #include "user_eeprom.h"
+#include "timeutils.h"
 
 #define DEBUG
 #include "SerialDebug.h"
+
+#define UPDATE_EEPROM_TIMEOUT_MS		HR_TO_MS(12)
 
 const char *userTagsEEPROM[MAX_USERS] = {nullptr};
 size_t numUsersEEPROM = 0;
@@ -33,7 +36,6 @@ void printUserTagsEEPROM(){
 // Compares current users in EEPROM and FireBase 
 // Users have to be the same to be up to date
 boolean UsersUpToDateInEEPROM() {
-	// DBGL("Num users EEPROM " + String(numUsersEEPROM) + " Num users Firebase " + String(numUsersFireBase));
 	if(!wifi_connected) {
 		return true;
 	}
@@ -58,7 +60,7 @@ boolean SaveUserInfoEEPROM() {
 	static uint32_t last_check = 0;
 	
 	// TODO: Change time to ~ 12-24 hr 
-	if((millis() - last_check > 300000) || last_check == 0) {
+	if((millis() - last_check > UPDATE_EEPROM_TIMEOUT_MS) || last_check == 0) {
 
 		GetAllUsersFireBase();		// Rewrites userTagsFirebase
 		GetAllUsersEEPROM(); 		// Rewrites userTagsEEPROM

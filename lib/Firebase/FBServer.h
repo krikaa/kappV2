@@ -3,7 +3,7 @@
 #include <Arduino.h>
 
 #define MAX_TAG_LEN 21
-#define MAX_USERS 100 // Max size of user tag is 21 bytes - Max EEPROM usage 2100 bytes
+#define MAX_USERS 97 // Max size of user tag is 21 bytes - Max EEPROM usage 2037 bytes
 
 typedef enum {
     CMD_OPEN,

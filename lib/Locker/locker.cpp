@@ -59,7 +59,7 @@ void initLockerDevs() {
     initLockerMagnet();
     initLockerSolenoid();
     initLockerBuzzer();
-    initLockerBuzzer();
+    initLockerLED();
 }
 
 void initInterruptMagnet(){
@@ -100,16 +100,16 @@ void SolenoidStateChange(uint8_t web_state)
 		if (!solenoid_state)
 		{
 			// Solenoid has just been opened
-			digitalWrite(INDICATE_SCAN_LED, HIGH);
+			// digitalWrite(INDICATE_SCAN_LED, HIGH);
 			solenoid_last_poll = millis();
 			solenoid_state = OPEN;
 			DBGL("Solenoid open");
 		}
 
-		if (solenoid_state && (millis() - solenoid_last_poll >= SOLENOID_OPEN_MS) && web_state != CMD_KEEP_OPEN)
+		if (solenoid_state && (millis() - solenoid_last_poll >= SOLENOID_OPEN_MS) && web_state != KEEP_OPEN)
 		{
 			// Solenoid has been open for more than SOLENOID_OPEN_MS
-			digitalWrite(INDICATE_SCAN_LED, LOW); // Indicate solenoid is closed
+			// digitalWrite(INDICATE_SCAN_LED, LOW); // Indicate solenoid is closed
 			digitalWrite(SOLENOID_PIN, LOW); 
 			solenoid_state = CLOSED;
 			DBGL("Solenoid closed");
@@ -142,5 +142,6 @@ void IndicateScan(String UUID)
 void SolenoidOpen(){
     Beep(150);
     solenoid_last_poll = millis();
+    tone(INDICATE_SCAN_LED, 2000, 150);
     digitalWrite(SOLENOID_PIN, HIGH);
 }
