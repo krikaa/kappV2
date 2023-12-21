@@ -30,7 +30,7 @@ void setup()
 	NfcBegin(&UUID);
 	Beep(150);
 
-	ConnectWifi("");
+	ConnectWifi();
 	ConnectFirebase();
 
 	BeginEEPROM(EEPROM_SIZE);

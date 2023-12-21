@@ -2,15 +2,15 @@
 #define DEBUG
 #include "SerialDebug.h"
 
-#define INDICATE_SCAN_LED 		0
-#define SOLENOID_PIN     		2
-#define MAGNET_SENSOR_PIN 		13
-#define BUZZER_PIN 				15
+#define INDICATE_SCAN_LED 				0
+#define SOLENOID_PIN     				2
+#define MAGNET_SENSOR_PIN 				13
+#define BUZZER_PIN 						15
 
-#define SOLENOID_OPEN_MS 		5000
-#define INDICATION_DURATION_MS 	1000
+#define SOLENOID_OPEN_MS 				5000
+#define INDICATION_DURATION_MS 			1000
 
-#define DEBOUNCE_DELAY_MS       100
+#define DEBOUNCE_DELAY_MS       		100
 
 uint32_t solenoid_last_poll = 0;
 boolean solenoid_state = CLOSED;

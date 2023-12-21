@@ -13,7 +13,7 @@
 #include "SerialDebug.h"
 
 #define WIFI_SSID 						"TalTech" 	// Change into your own WiFi SSID
-#define WIFI_PASSWORD 					""	// Change the password
+#define WIFI_PASSWORD 					""			// Change the password
 
 #define API_KEY 						"API_KEY"
 #define DATABASE_URL 					"nutikapp-default-rtdb.europe-west1.firebasedatabase.app"
@@ -248,7 +248,7 @@ static void SendWiFiStatus(){
 
 	if ((millis() - wifi_last_status_sent) > SEND_WIFI_STATUS_TIMEOUT_MS) {	 	// Every 5 Minutes
 		if(!wifi_connected) {					// Try to reconnect if disconnected
-			ConnectWifi("");
+			ConnectWifi();
 			ConnectFirebase();
 		}
 		else{
@@ -422,11 +422,10 @@ CMD_TYPE_E FireBaseTask(String *UUID)
 }
 
 // Creates WiFi connection
-void ConnectWifi(const char* pass)
+void ConnectWifi()
 {
 	static int i = 0;
-	DBGL(pass);
-	WiFi.begin(WIFI_SSID, pass);
+	WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
 	DBGL("Connecting to Wi-Fi");
 
 	unsigned long startMillis = millis();

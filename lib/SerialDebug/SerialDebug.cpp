@@ -1,7 +1,7 @@
 #include <SerialDebug.h>
 
-#define RX_PIN D5   // Hall
-#define TX_PIN D0   // Valge
+#define RX_PIN                  D5   // Hall
+#define TX_PIN                  D0   // Valge
 
 SoftwareSerial SWSerial(RX_PIN, TX_PIN);
 

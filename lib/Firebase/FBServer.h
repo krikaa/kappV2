@@ -25,7 +25,7 @@ struct User {
     char tag[MAX_TAG_LEN];
 };
 
-void ConnectWifi(const char*);
+void ConnectWifi();
 void ConnectFirebase();
 
 CMD_TYPE_E FireBaseTask(String *);
