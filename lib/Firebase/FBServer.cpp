@@ -19,7 +19,7 @@
 #define DATABASE_URL 					"nutikapp-default-rtdb.europe-west1.firebasedatabase.app"
 
 #define FIREBASE_EMAIL 					"FIREBASE_EMAIL_VAL"
-#define FIREBASE_PASSWORD				"FIREBASE_PASSWORD4"
+#define FIREBASE_PASSWORD				"FIREBASE_PASSWORD_VAL"
 
 #define UPDATE_DOOR_TIMEOUT_MS			SEC_TO_MS(1)
 #define CHECK_SOLENOID_TIMEOUT_MS		SEC_TO_MS(5)
