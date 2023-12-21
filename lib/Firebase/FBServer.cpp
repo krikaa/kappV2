@@ -18,6 +18,9 @@
 #define API_KEY 						"API_KEY"
 #define DATABASE_URL 					"nutikapp-default-rtdb.europe-west1.firebasedatabase.app"
 
+#define FIREBASE_EMAIL 					"FIREBASE_EMAIL"
+#define FIREBASE_PASSWORD				"FIREBASE_PASSWORD4"
+
 #define UPDATE_DOOR_TIMEOUT_MS			SEC_TO_MS(1)
 #define CHECK_SOLENOID_TIMEOUT_MS		SEC_TO_MS(5)
 #define WIFI_TIMEOUT_MS 				SEC_TO_MS(30)			
@@ -461,8 +464,8 @@ void ConnectFirebase()
 	config.database_url = DATABASE_URL;
 
 
-	auth.user.email = "FIREBASE_EMAIL";
-	auth.user.password = "FIREBASE_PASSWORD";
+	auth.user.email = FIREBASE_EMAIL;
+	auth.user.password = FIREBASE_PASSWORD;
 
 	signupOK = true;
 
