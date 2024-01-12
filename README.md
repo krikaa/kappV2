@@ -7,6 +7,10 @@ Authors:
 * Siim Tišler
 * Markus Veersoo
 
+## Full documentation (in Estonian)
+
+[IAS1420-Aruanne_Laborikapp.pdf](https://github.com/siimtishler/kapp/files/13920218/IAS1420-Aruanne_Laborikapp.1.pdf) \
+In the documentation scroll to bottom for pictures, screenshots and use cases.
 
 ## Introduction
 This is the repo for course "IAS1420 Arvutite ja süsteemide projekt" at TalTech 2023. 
@@ -32,3 +36,4 @@ The branches all contain separate parts of code that should never be merged toge
 * Master - Contains code for the Master ESP8266
 * Display - Contains code for the Slave ESP2866
 * Web-interface - Contains code for the web interface, at https://nutikapp.web.app/login
+
