@@ -26,3 +26,9 @@ To use the developed firmware on the chosen hardware for the cabinet, two ESP826
 * NFC reader library
 * Visual Studio Code as an integrated development environment (IDE)
 * Git for version control
+
+## Project layout/format
+The branches all contain separate parts of code that should never be merged together
+* Master - Contains code for the Master ESP8266
+* Display - Contains code for the Slave ESP2866
+* Web-interface - Contains code for the web interface, at https://nutikapp.web.app/login
