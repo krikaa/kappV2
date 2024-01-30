@@ -28,6 +28,32 @@ export default firebaseInstance;
 ```
 The Firebase configuration values can be obtained from the Firebase console.
 
+## Screenshots
+
+**Login page on web and mobile**
+
+![image](https://github.com/siimtishler/kapp/assets/17281140/eb0fac60-5b34-4094-9d84-a8b6c9d53422)
+![image](https://github.com/siimtishler/kapp/assets/17281140/cc2036bb-75d1-49bc-b6ea-cceda21fa0e3)
+
+**Home page on web and mobile**
+
+![image](https://github.com/siimtishler/kapp/assets/17281140/ef138ad0-3341-4b9f-b3df-f9ee6a3039c0)
+![image](https://github.com/siimtishler/kapp/assets/17281140/36a58073-fcb3-4fc9-8c1b-6f95724ffff1)
+
+**Logs page on web and mobile**
+
+![image](https://github.com/siimtishler/kapp/assets/17281140/3835d704-27a6-47f5-9ca7-7388ecce12ea)
+![image](https://github.com/siimtishler/kapp/assets/17281140/22559286-28e6-40cb-b3ef-d4a412c7ad01)
+
+**Users page**
+
+![image](https://github.com/siimtishler/kapp/assets/17281140/409e720f-f6c7-494b-807d-12ad205c975e)
+
+**Settings page**
+
+![image](https://github.com/siimtishler/kapp/assets/17281140/f45a1789-40df-4118-88ae-7859188efb60)
+
+
 ## Info
 
 Further documentation and description of the web interface is available in the master branch of this repository
