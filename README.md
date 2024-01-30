@@ -1,6 +1,6 @@
 # Nutikas laborikapp
 
-TalTech project 2023 \
+TalTech Computers and Systems project 2023 \
 Authors:
 * Markus Visnapuu 
 * Rannar Randmäe 
