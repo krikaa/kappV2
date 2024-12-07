@@ -1,6 +1,3 @@
-[submodule "display-controller"]
-	path = display-controller
-	url = git@github.com:krikaa/kappV2-display-controller.git
 [submodule "door-controller"]
 	path = door-controller
 	url = git@github.com:krikaa/kappV2-door-controller.git
