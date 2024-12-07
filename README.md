@@ -2,24 +2,18 @@
 
 Continuation of development of a smart metal locker module, openable with an ISIC card or through a web application.
 
-Continuation by:
+Continuation by (TalTech Computers and Systems project 2024):
 
-TalTech Computers and Systems project 2024 \
-Authors:
 * Kristjan Kaal
 * Daniel Erg 
 * Hendrik Haabu
 
-Original 2023 project by:
+[Original 2023 project](https://github.com/siimtishler/kapp) by (TalTech Computers and Systems project 2023):
 
-TalTech Computers and Systems project 2023 \
-Authors:
 * Markus Visnapuu 
 * Rannar Randmäe 
 * Siim Tišler
 * Markus Veersoo
-
-Original project can be found [here](https://github.com/siimtishler/kapp)
 
 ## Full documentation (in Estonian)
 
