@@ -1,6 +1,6 @@
 # Nutika laborikapi edasiarendus 
 
-Continuation of development of a smart metal locker module, openable with an ISIC card or through a web application.
+Continuation of development of a smart metal locker module, to make it openable with an ISIC card or through a web application.
 
 Continuation by (TalTech Computers and Systems project 2024):
 
