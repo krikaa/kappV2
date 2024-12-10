@@ -17,7 +17,7 @@ Continuation by (TalTech Computers and Systems project 2024):
 
 ## Full documentation (in Estonian)
 
-[IAS1420-Aruanne_Laborikapp.pdf](https://github.com/krikaa/kappV2/blob/master/Report%20file.pdf) \
+[IAS1420-Aruanne_Laborikapp.pdf](https://github.com/krikaa/kappV2/blob/master/Targa%20laborikapi%20edasiarendus%20aruanne.pdf) \
 The documentation contains details about the improvements, description of the product and instructions on how it should be put together.
 
 ## Introduction
@@ -26,7 +26,7 @@ The goal of the project was to fix some software issues regarding the 2023 year 
 This repo is only for more convenient code management and project is intended only as a study project.
 
 ## Hardware
-![Schematic](https://github.com/siimtishler/kapp/blob/master/Schematic.png?raw=true)
+![Schematic](https://github.com/krikaa/kappV2/blob/master/Schematic.png)
 
 ## Installation
 For fully setting up the device, the following has to be done:
