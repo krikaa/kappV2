@@ -17,7 +17,7 @@ Continuation by (TalTech Computers and Systems project 2024):
 
 ## Full documentation (in Estonian)
 
-[IAS1420-Aruanne_Laborikapp.pdf](https://github.com/krikaa/kappV2/blob/master/Targa%20laborikapi%20edasiarendus%20aruanne.pdf) \
+[Targa laborikapi edasiarendus aruanne.pdf](https://github.com/krikaa/kappV2/blob/master/Targa%20laborikapi%20edasiarendus%20aruanne.pdf) \
 The documentation contains details about the improvements, description of the product and instructions on how it should be put together.
 
 ## Introduction
