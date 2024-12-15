@@ -48,9 +48,9 @@ For fully setting up the device, the following has to be done:
 * Build the [circuit](https://github.com/krikaa/kappV2/blob/master/Schematic.png) and test if everything works.
 
 3. Set up the module:
-* Print or cut out the models found in the [enclosures](https://github.com/krikaa/kappV2/tree/master/Enclosures) folder. 
+* Print or manufacture the models found in the [3D-models](https://github.com/krikaa/kappV2/tree/master/3D-models) folder. 
 NB! Be aware that many pieces require to be out of metal, or they will break!
-* Put the module together by the instructions in the [documentation](https://github.com/krikaa/kappV2/blob/master/Report%20file.pdf)
+* Put the module together by the instructions in the [documentation](https://github.com/krikaa/kappV2/blob/master/Targa%20laborikapi%20edasiarendus%20aruanne.pdf).
 * Install the module on a locker by the instructions.
 
 ## Technologies Used
