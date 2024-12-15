@@ -58,6 +58,7 @@ NB! Be aware that many pieces require to be out of metal, or they will break!
 * Firebase cloud service
 * NFC reader library
 * Visual Studio Code as an integrated development environment (IDE)
+* SolidWorks for 3D CAD Design
 * Git for version control
 
 ## Project layout/format
